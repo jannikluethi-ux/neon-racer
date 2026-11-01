@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22 matches the known-good local version (the default system Node
+      # here is broken), so CI and local builds agree.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Lockfile-exact install. devDependencies are present in CI (unlike
+      # deploy), so tsx and playwright are available to the checks below.
+      - run: npm ci
+
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:game
+      # build needs no DATABASE_URL: scripts/migrate.mjs skips gracefully.
+      - run: npm run build
