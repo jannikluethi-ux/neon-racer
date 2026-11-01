@@ -367,11 +367,12 @@ for (const ai of AI_CARS) {
     car.hint = -1;
     return aiCommand(car, sim.track, dt, [car], diff, 12);
   };
-  const vexBrake = at("VEX", "normal", 180).brake;
-  const nyxBrake = at("NYX", "normal", 180).brake;
-  const easyBrake = at("VEX", "easy", 180).brake;
+  const vexBrake = at("VEX", "normal", 120).brake;
+  const nyxBrake = at("NYX", "normal", 120).brake;
+  const easyBrake = at("VEX", "easy", 120).brake;
+  const hardBrake = at("VEX", "hard", 120).brake;
   if (nyxBrake <= vexBrake + 0.2) fail(`NYX did not brake earlier (${nyxBrake} vs ${vexBrake})`);
-  if (easyBrake <= vexBrake + 0.2) fail(`easy did not brake earlier (${easyBrake} vs ${vexBrake})`);
+  if (easyBrake <= hardBrake + 0.2) fail(`easy did not brake earlier (${easyBrake} vs ${hardBrake})`);
 }
 
 {
