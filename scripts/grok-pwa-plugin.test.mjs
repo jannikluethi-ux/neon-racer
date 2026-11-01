@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   appNameFromHost,
-  createHeadInjector,
+  createHeadInjector as createHeadInjectorImpl,
   grokXCreatorHeadTags,
-  injectGrokPwaHead,
+  injectGrokPwaHead as injectGrokPwaHeadImpl,
   isDocumentPath,
   isInstallQuery,
   publicAppHost,
@@ -20,6 +20,12 @@ import {
 import { renderInstallPage } from "./grok-pwa-plugin.mjs";
 
 const TEMPLATE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Keep plugin unit tests independent of builder-local .grok/app-env and site.json.
+const TEST_CWD = mkdtempSync(join(tmpdir(), "grok-pwa-test-"));
+const injectGrokPwaHead = (html, context = {}) =>
+  injectGrokPwaHeadImpl(html, { cwd: TEST_CWD, ...context });
+const createHeadInjector = (context = {}) =>
+  createHeadInjectorImpl({ cwd: TEST_CWD, ...context });
 
 test("injects before </head>", () => {
   const out = injectGrokPwaHead("<html><head><title>x</title></head><body></body></html>");
@@ -503,4 +509,3 @@ test("vite plugin bakes og identity as a virtual module", () => {
   assert.match(plugin, /virtual:grok-og-identity/);
   assert.match(plugin, /snapshotOgIdentity/);
 });
-

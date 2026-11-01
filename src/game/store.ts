@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createCup, currentRound, earnedUnlocks, playerStanding, recordRound, restartCup, roundsOf, type ActiveChampionship, type CupFinisher } from "./championship";
+import { dailyEvent } from "./daily";
 import { applyProgress, emptyCareer, type CarMastery, type CareerStats, type ChallengeProgress, type RaceSummary, type TrackMastery } from "./mastery";
 import type { SaveData, Quality, TouchMode, AiDifficulty, TrackRecord } from "./save";
 import { commitFinish, defaultSave, isTrackUnlocked, isVehicleUnlocked, SAVE_VERSION, writeSave } from "./save";
@@ -17,6 +18,7 @@ export type RaceContext = {
   vehicleId: string;
   difficulty: AiDifficulty;
   cup: boolean;
+  daily?: boolean;
 };
 
 export type GapRow = {
@@ -31,6 +33,14 @@ export type RaceExtras = {
   place: number;
   distance: number;
   avg: number | null;
+  sectorTimes?: number[];
+};
+
+export type SectorReview = {
+  times: number[];
+  best: number[];
+  deltas: Array<number | null>;
+  biggestLoss: { index: number; seconds: number } | null;
 };
 
 export type ResultRow = {
@@ -155,8 +165,10 @@ type GameState = {
   raceTime: number;
   lapTime: number;
   bestLap: number | null;
-  bestTime: number | null;
-  newBest: boolean;
+  sectorIndex: number;
+  sectorTime: number;
+  sectorBest: number | null;
+  sectorDelta: number | null;
   results: ResultRow[];
   gaps: GapRow[];
   quality: Quality;
@@ -176,10 +188,10 @@ type GameState = {
   career: CareerStats;
   challenges: Record<string, ChallengeProgress>;
   lastProgress: RaceSummary | null;
+  sectorReview: SectorReview | null;
   personalBest: PersonalBest;
   freshUnlock: string | null;
   settingsOpen: boolean;
-  ready: boolean;
   telemetry: Telemetry;
   startNonce: number;
   restartNonce: number;
@@ -192,6 +204,7 @@ type GameState = {
   selectVehicle: (id: string) => void;
   selectTrack: (id: string) => void;
   beginRace: () => void;
+  beginDailyRace: () => void;
   commitRace: (trackId: string, raceTime: number, bestLap: number | null, finishers?: CupFinisher[], extras?: RaceExtras) => void;
   setSettingsOpen: (open: boolean) => void;
   patchSettings: (partial: Partial<Pick<SaveData["settings"], "quality" | "volume" | "steerSens" | "touch" | "difficulty">>) => void;
@@ -251,7 +264,6 @@ function applySave(data: SaveData) {
     carMastery: data.carMastery,
     career: data.career,
     challenges: data.challenges,
-    bestTime: data.trackRecords[data.selectedTrack]?.bestRace ?? null,
     bestLap: data.trackRecords[data.selectedTrack]?.bestLap ?? null,
   };
 }
@@ -274,8 +286,10 @@ export const useGame = create<GameState>((set, get) => ({
   raceTime: 0,
   lapTime: 0,
   bestLap: null,
-  bestTime: null,
-  newBest: false,
+  sectorIndex: 0,
+  sectorTime: 0,
+  sectorBest: null,
+  sectorDelta: null,
   results: [],
   gaps: [],
   quality: defaultSave.settings.quality,
@@ -295,10 +309,10 @@ export const useGame = create<GameState>((set, get) => ({
   career: emptyCareer(),
   challenges: {},
   lastProgress: null,
+  sectorReview: null,
   personalBest: null,
   freshUnlock: null,
   settingsOpen: false,
-  ready: false,
   telemetry: EMPTY_TEL,
   startNonce: 0,
   restartNonce: 0,
@@ -338,13 +352,38 @@ export const useGame = create<GameState>((set, get) => ({
     const s = get();
     if (!isTrackUnlocked(s.selectedTrack, snapshot(s), s.unlockAll)) return;
     if (!isVehicleUnlocked(s.selectedVehicle, snapshot(s), s.unlockAll)) return;
-    set({ startNonce: s.startNonce + 1, course: "race", screen: "title", settingsOpen: false, personalBest: null, freshUnlock: null, lastProgress: null, raceContext: null });
+    set({ startNonce: s.startNonce + 1, course: "race", screen: "title", settingsOpen: false, personalBest: null, freshUnlock: null, lastProgress: null, sectorReview: null, raceContext: null });
+  },
+  beginDailyRace: () => {
+    const s = get();
+    const event = dailyEvent();
+    set({
+      startNonce: s.startNonce + 1,
+      course: "race",
+      screen: "title",
+      settingsOpen: false,
+      personalBest: null,
+      freshUnlock: null,
+      lastProgress: null,
+      sectorReview: null,
+      raceContext: { trackId: event.trackId, vehicleId: event.vehicleId, difficulty: s.difficulty, cup: false, daily: true },
+    });
   },
   commitRace: (trackId, raceTime, bestLap, finishers?: CupFinisher[], extras?: RaceExtras) => {
     const before = snapshot(get());
     const previousLap = before.trackRecords[trackId]?.bestLap ?? null;
     const previousRace = before.trackRecords[trackId]?.bestRace ?? null;
-    const result = commitFinish(before, trackId, raceTime, bestLap);
+    const previousSectors = before.trackRecords[trackId]?.bestSectors ?? [];
+    const currentSectors = extras?.sectorTimes?.map((time) => (typeof time === "number" && time > 0 ? time : 0)) ?? [];
+    const sectorDeltas = currentSectors.map((time, index) => {
+      const previous = previousSectors[index] ?? 0;
+      return previous > 0 ? time - previous : null;
+    });
+    const biggestLoss = sectorDeltas.reduce<{ index: number; seconds: number } | null>((best, delta, index) => {
+      if (delta == null || delta <= 0 || (best != null && delta <= best.seconds)) return best;
+      return { index, seconds: delta };
+    }, null);
+    const result = commitFinish(before, trackId, raceTime, bestLap, extras?.sectorTimes);
     const personalBest: PersonalBest = result.newLap && result.newRace ? "both" : result.newLap ? "lap" : result.newRace ? "race" : null;
     const prior = get().cup;
     const wasComplete = prior?.complete ?? false;
@@ -400,10 +439,18 @@ export const useGame = create<GameState>((set, get) => ({
     set({
       ...applySave(save),
       cup,
-      newBest: personalBest != null,
       personalBest,
       freshUnlock: names.length > 0 ? names.join(" · ") : null,
       lastProgress: summary,
+      sectorReview:
+        currentSectors.some((time) => time > 0)
+          ? {
+              times: currentSectors,
+              best: save.trackRecords[trackId]?.bestSectors ?? currentSectors,
+              deltas: sectorDeltas,
+              biggestLoss,
+            }
+          : null,
     });
   },
   setSettingsOpen: (settingsOpen) => set({ settingsOpen, screen: settingsOpen ? "settings" : "title" }),
@@ -431,6 +478,7 @@ export const useGame = create<GameState>((set, get) => ({
       personalBest: null,
       freshUnlock: null,
       lastProgress: null,
+      sectorReview: null,
       confirm: null,
     });
   },

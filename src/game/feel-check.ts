@@ -94,6 +94,10 @@ function car(): CarState {
     laps: 0,
     nextGate: 0,
     sector: 0,
+    sectorIndex: 0,
+    sectorClock: 0,
+    sectorTimes: [],
+    bestSectorTimes: [],
     lapClock: 0,
     lastLap: 0,
     bestLap: 0,
@@ -266,7 +270,7 @@ const easy = holdSteer(22.2, { ...IDLE_INPUT, throttle: 0.45, steer: 0.7 }, 1.2)
 const limit120 = holdSteer(33.3, { ...IDLE_INPUT, throttle: 0.55, steer: 1 }, 1.2);
 const hard160 = holdSteer(44.4, { ...IDLE_INPUT, throttle: 0.7, steer: 1 }, 1.1);
 const tight200 = holdSteer(55.6, { ...IDLE_INPUT, throttle: 0.85, steer: 1 }, 1.1);
-const sweep200 = holdSteer(55.6, { ...IDLE_INPUT, throttle: 0.85, steer: 0.22 }, 1.2);
+const _sweep200 = holdSteer(55.6, { ...IDLE_INPUT, throttle: 0.85, steer: 0.22 }, 1.2);
 const powerLow = holdSteer(32, { ...IDLE_INPUT, throttle: 0.2, steer: 0.8 }, 1.1);
 const powerHigh = holdSteer(32, { ...IDLE_INPUT, throttle: 1, steer: 0.8 }, 1.1);
 const brakeOff = holdSteer(36, { ...IDLE_INPUT, throttle: 0.15, steer: 0.75 }, 0.8);

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { ChevronLeft, ChevronRight, RotateCcw, House } from "lucide-react";
 import { formatRaceTime } from "@/game/math";
 import { touch } from "@/game/input";
@@ -16,6 +16,7 @@ function hold(set: (down: boolean) => void) {
     onPointerDown: (e: PointerEvent<HTMLButtonElement>) => {
       e.preventDefault();
       e.currentTarget.setPointerCapture(e.pointerId);
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate?.(8);
       set(true);
     },
     onPointerUp: () => set(false),
@@ -31,12 +32,15 @@ export function NeonRacer() {
   const course = useGame((s) => s.course);
   const screen = useGame((s) => s.screen);
   const touchMode = useGame((s) => s.touch);
+  const [engineError, setEngineError] = useState<string | null>(null);
 
   useEffect(() => {
     useGame.getState().hydrate(loadSave());
-    const flag = new URLSearchParams(window.location.search).get("unlock");
-    if (flag === "0") useGame.getState().setUnlockAll(false);
-    else if (flag === "1") useGame.getState().setUnlockAll(true);
+    if (import.meta.env.DEV) {
+      const flag = new URLSearchParams(window.location.search).get("unlock");
+      if (flag === "0") useGame.getState().setUnlockAll(false);
+      else if (flag === "1") useGame.getState().setUnlockAll(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -44,13 +48,29 @@ export function NeonRacer() {
     if (!canvas) return;
     let cleanup = () => {};
     let cancel = false;
+    const showFallback = (msg: string) => { if (!cancel) setEngineError(msg); };
+    const onFallback = (ev: Event) => {
+      const d = (ev as any).detail;
+      showFallback(typeof d === "string" ? d : "Engine error.");
+    };
+    window.addEventListener("game-fallback", onFallback);
+    const onContextLost = (e: Event) => { e.preventDefault(); showFallback("WebGL context lost."); };
+    canvas.addEventListener("webglcontextlost", onContextLost);
     void import("@/game/engine").then(({ startGame }) => {
       if (cancel) return;
-      cleanup = startGame(canvas, miniRef.current);
+      try {
+        cleanup = startGame(canvas, miniRef.current);
+      } catch (err: any) {
+        showFallback(err?.message || "Failed to initialize engine.");
+      }
+    }).catch((err: any) => {
+      showFallback(err?.message || "Failed to load engine.");
     });
     return () => {
       cancel = true;
       cleanup();
+      window.removeEventListener("game-fallback", onFallback);
+      canvas.removeEventListener("webglcontextlost", onContextLost);
     };
   }, []);
 
@@ -59,6 +79,14 @@ export function NeonRacer() {
   return (
     <div className={rootClass} data-phase={phase}>
       <canvas ref={canvasRef} className="game-canvas" />
+      {engineError && (
+        <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",backgroundColor:"rgba(0,0,0,0.85)",color:"#eee",zIndex:2147483647,padding:20,fontFamily:"system-ui,sans-serif",textAlign:"center"}}>
+          <div>
+            <p style={{marginBottom:"1em"}}>{engineError}</p>
+            <button type="button" onClick={() => window.location.reload()} style={{padding:"6px 14px",fontSize:"14px",cursor:"pointer"}}>Retry</button>
+          </div>
+        </div>
+      )}
       {(phase === "menu" && screen === "title") && <TitleScreen />}
       {(phase === "menu" && screen === "cars") && <CarSelect />}
       {(phase === "menu" && screen === "tracks") && <TrackSelect />}
@@ -68,6 +96,7 @@ export function NeonRacer() {
       {(phase === "menu" && screen === "cup-diff") && <CupDifficulty />}
       {(phase === "menu" && screen === "cup-brief") && <CupBrief />}
       {(phase === "grid" || phase === "countdown" || phase === "racing" || phase === "finishing") && <Hud />}
+      <MobileRaceHint phase={phase} />
       {(phase === "grid" || phase === "countdown" || phase === "racing" || phase === "finishing") &&
       import.meta.env.DEV ? (
         <Telemetry />
@@ -100,6 +129,32 @@ export function NeonRacer() {
         </div>
       </div>
     </div>
+  );
+}
+
+function MobileRaceHint({ phase }: { phase: string }) {
+  const [portrait, setPortrait] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia?.("(orientation: portrait)");
+    const update = () => setPortrait(Boolean(query?.matches && (navigator.maxTouchPoints > 0 || "ontouchstart" in window)));
+    update();
+    query?.addEventListener?.("change", update);
+    window.addEventListener("resize", update);
+    return () => {
+      query?.removeEventListener?.("change", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+  if (!portrait || !["grid", "countdown", "racing", "finishing"].includes(phase)) return null;
+  return (
+    <>
+      <div className="orientation-scrim" aria-hidden />
+      <aside className="orientation-hint" aria-live="polite">
+        <span className="orientation-icon" aria-hidden>↔</span>
+        <strong>Landscape race mode</strong>
+        <small>Rotate your phone for the full track view.</small>
+      </aside>
+    </>
   );
 }
 
@@ -199,6 +254,13 @@ function formatGap(seconds: number): string {
   return `${sign}${abs.toFixed(2)}`;
 }
 
+function formatSectorDelta(seconds: number): string {
+  const abs = Math.abs(seconds).toFixed(2);
+  if (seconds > 0.005) return `+${abs}s`;
+  if (seconds < -0.005) return `−${abs}s`;
+  return `±${abs}s`;
+}
+
 function GapList() {
   const gaps = useGame((s) => s.gaps);
   const course = useGame((s) => s.course);
@@ -232,6 +294,10 @@ function Hud() {
   const raceTime = useGame((s) => s.raceTime);
   const lapTime = useGame((s) => s.lapTime);
   const bestLap = useGame((s) => s.bestLap);
+  const sectorIndex = useGame((s) => s.sectorIndex);
+  const sectorTime = useGame((s) => s.sectorTime);
+  const sectorBest = useGame((s) => s.sectorBest);
+  const sectorDelta = useGame((s) => s.sectorDelta);
   const countdownLabel = useGame((s) => s.countdownLabel);
   const banner = useGame((s) => s.banner);
   const wrongWay = useGame((s) => s.wrongWay);
@@ -279,12 +345,19 @@ function Hud() {
                 {bestLap != null ? ` · BEST ${formatRaceTime(bestLap)}` : ""}
               </p>
             ) : null}
+            {course === "race" && showClock ? (
+              <p className={sectorDelta != null && sectorDelta > 0.05 ? "hud-split sector-behind" : "hud-split sector-ahead"}>
+                S{sectorIndex + 1} {formatRaceTime(sectorTime)}
+                {sectorBest != null ? ` · ${formatSectorDelta(sectorDelta ?? 0)}` : " · NEW"}
+              </p>
+            ) : null}
             {cupLive ? (
               <p className="hud-split">
                 {(cupById(cupLive.id)?.name ?? "CUP").toUpperCase()} · ROUND {cupLive.round + 1} / {roundsOf(cupLive).length}
                 {cupPlace ? ` · ${ordinal(cupPlace.place)}` : ""}
               </p>
             ) : null}
+            {raceContext?.daily ? <p className="hud-split daily-live">DAILY RUN · TODAY&apos;S EVENT</p> : null}
           </div>
           <div className="hud-actions">
             <button type="button" className="btn" onClick={() => useGame.getState().requestRestart()}>
@@ -396,6 +469,35 @@ function ProgressNote() {
   );
 }
 
+function SectorReview() {
+  const review = useGame((s) => s.sectorReview);
+  if (!review || review.times.length === 0) return null;
+  return (
+    <div className="sector-review">
+      <p className="section-label">SECTOR REVIEW</p>
+      {review.biggestLoss ? (
+        <p className="best-line sector-loss">
+          Biggest time loss: S{review.biggestLoss.index + 1} +{review.biggestLoss.seconds.toFixed(2)}s
+        </p>
+      ) : (
+        <p className="best-line sector-ahead">Every recorded sector matched or beat your previous line.</p>
+      )}
+      <div className="sector-grid">
+        {review.times.map((time, index) => {
+          const delta = review.deltas[index];
+          return (
+            <div key={index} className="sector-chip">
+              <span>S{index + 1}</span>
+              <strong>{formatRaceTime(time)}</strong>
+              <small>{delta == null ? "NEW" : formatSectorDelta(delta)}</small>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Results() {
   const results = useGame((s) => s.results);
   const personalBest = useGame((s) => s.personalBest);
@@ -427,6 +529,7 @@ function Results() {
         </p>
         {freshUnlock ? <p className="best-line">Unlocked: {freshUnlock}.</p> : null}
         <ProgressNote />
+        <SectorReview />
         <div>
           {board.map((row) => {
             const total = racedSeconds(row.time);
@@ -460,7 +563,7 @@ function Results() {
 
   return (
     <section className="glass results-card">
-      <p className="eyebrow">{cupRace ? "Race result" : bestLabel}</p>
+       <p className="eyebrow">{raceContext?.daily ? "Daily run" : cupRace ? "Race result" : bestLabel}</p>
       <h2>{player ? ordinal(player.place) : "Finish"}</h2>
       {player?.time != null ? <p className="lede">{formatRaceTime(player.time)}</p> : <p className="lede">DNF</p>}
       <p className="best-line">
@@ -469,8 +572,10 @@ function Results() {
         {player?.avg != null ? ` · avg ${Math.round(player.avg)} km/h` : ""}
         {player ? ` · nitro ${player.nitro}` : ""}
       </p>
+      {raceContext?.daily ? <p className="result-meta">Today&apos;s event is logged to your circuit record.</p> : null}
       {freshUnlock ? <p className="best-line">Unlocked: {freshUnlock}.</p> : null}
       <ProgressNote />
+      <SectorReview />
       {cupRace && mine ? (
         <p className="best-line">
           +{earned} championship {earned === 1 ? "point" : "points"} · {ordinal(mine.place)} — {mine.points} pts

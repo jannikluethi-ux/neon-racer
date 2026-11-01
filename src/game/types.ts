@@ -72,6 +72,11 @@ export type CarState = {
   nextGate: number;
   /** 0..1 progress from the previous checkpoint toward the next one. */
   sector: number;
+  /** Current split within a lap. Four sectors keep the HUD readable on a phone. */
+  sectorIndex: number;
+  sectorClock: number;
+  sectorTimes: number[];
+  bestSectorTimes: number[];
   lapClock: number;
   lastLap: number;
   bestLap: number;

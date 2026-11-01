@@ -1,8 +1,6 @@
 import { cupById, type ActiveChampionship, type CupRoundResult } from "./championship";
 import {
-  emptyCarMastery,
   emptyCareer,
-  emptyTrackMastery,
   proveCareer,
   syncChallenges,
   type CarMastery,
@@ -21,6 +19,8 @@ export type AiDifficulty = "easy" | "normal" | "hard";
 export type TrackRecord = {
   bestLap: number | null;
   bestRace: number | null;
+  /** Best known four-way split times for this circuit. Zero means unset. */
+  bestSectors: number[];
   bestLapCar: string | null;
   bestRaceCar: string | null;
   bestAvg: number | null;
@@ -219,9 +219,14 @@ function cleanMasteryMaps(tracksIn: unknown, carsIn: unknown): { trackMastery: R
 function cleanRecord(value: unknown): TrackRecord {
   const row = value && typeof value === "object" ? (value as Partial<TrackRecord>) : {};
   const car = (id: unknown) => (typeof id === "string" && VEHICLES.some((item) => item.id === id) ? id : null);
+  const bestSectors = Array.from({ length: 4 }, (_, index) => {
+    const value = Array.isArray(row.bestSectors) ? row.bestSectors[index] : undefined;
+    return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+  });
   return {
     bestLap: typeof row.bestLap === "number" && row.bestLap > 0 ? row.bestLap : null,
     bestRace: typeof row.bestRace === "number" && row.bestRace > 0 ? row.bestRace : null,
+    bestSectors,
     bestLapCar: car(row.bestLapCar),
     bestRaceCar: car(row.bestRaceCar),
     bestAvg: typeof row.bestAvg === "number" && row.bestAvg > 0 ? row.bestAvg : null,
@@ -378,16 +383,34 @@ export type FinishCommit = {
 };
 
 /** Records a finish and grants whatever that track definition unlocks. */
-export function commitFinish(data: SaveData, trackId: string, raceTime: number, bestLap: number | null): FinishCommit {
+export function commitFinish(
+  data: SaveData,
+  trackId: string,
+  raceTime: number,
+  bestLap: number | null,
+  sectorTimes: readonly number[] = [],
+): FinishCommit {
   const save = normalizeSave(data);
   const prev = save.trackRecords[trackId] ?? cleanRecord(null);
-  const next: TrackRecord = { ...prev };
+  const next: TrackRecord = { ...prev, bestSectors: [...prev.bestSectors] };
   const newLap = bestLap != null && bestLap > 0 && (prev.bestLap == null || bestLap < prev.bestLap);
   const finished = raceTime > 0;
   const newRace = finished && (prev.bestRace == null || raceTime < prev.bestRace);
   if (newLap && bestLap != null) next.bestLap = bestLap;
   if (newRace) next.bestRace = raceTime;
-  if (next.bestLap != null || next.bestRace != null || next.bestAvg != null || save.trackRecords[trackId]) {
+  for (let index = 0; index < next.bestSectors.length; index++) {
+    const time = sectorTimes[index];
+    if (typeof time === "number" && time > 0 && (next.bestSectors[index] === 0 || time < next.bestSectors[index]!)) {
+      next.bestSectors[index] = time;
+    }
+  }
+  if (
+    next.bestLap != null ||
+    next.bestRace != null ||
+    next.bestAvg != null ||
+    next.bestSectors.some((time) => time > 0) ||
+    save.trackRecords[trackId]
+  ) {
     save.trackRecords = { ...save.trackRecords, [trackId]: next };
   }
   let freshUnlock: string | null = null;

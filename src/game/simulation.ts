@@ -7,6 +7,16 @@ import type { CarState, CourseId, InputCommand, Phase } from "./types";
 import { IDLE_INPUT } from "./types";
 import { applyLaunch, stepCar } from "./vehicle";
 
+const SECTOR_COUNT = 4;
+
+/** Gate indices that close a phone-readable four-sector split. */
+function completedSectorForGate(gateIndex: number, gateCount: number): number {
+  if (gateCount <= 0) return -1;
+  const completed = (gateIndex + 1) * SECTOR_COUNT;
+  if (completed % gateCount !== 0) return -1;
+  return Math.min(SECTOR_COUNT - 1, completed / gateCount - 1);
+}
+
 const scratch: Projection = {
   sampleIndex: 0,
   x: 0,
@@ -98,6 +108,10 @@ function blankCar(id: string, name: string, color: number, isPlayer: boolean, ai
     laps: 0,
     nextGate: 0,
     sector: 0,
+    sectorIndex: 0,
+    sectorClock: 0,
+    sectorTimes: [],
+    bestSectorTimes: [],
     lapClock: 0,
     lastLap: 0,
     bestLap: 0,
@@ -183,7 +197,7 @@ export function applyLineup(sim: Sim, playerVehicleId: string): void {
     const car = sim.cars[i + 1];
     const ai = AI_CARS[i];
     if (!car || !ai) continue;
-    car.vehicleId = player.id;
+    car.vehicleId = ai.vehicleId;
     car.name = ai.name;
     car.color = ai.color;
   }
@@ -231,6 +245,10 @@ export function placeGrid(sim: Sim): void {
     car.laps = 0;
     car.nextGate = 0;
     car.sector = 0;
+    car.sectorIndex = 0;
+    car.sectorClock = 0;
+    car.sectorTimes = [];
+    car.bestSectorTimes = [];
     car.lapClock = 0;
     car.lastLap = 0;
     car.bestLap = 0;
@@ -382,8 +400,20 @@ export function stepSim(sim: Sim, dt: number, playerInput: InputCommand, steerSe
     if (!car.finished) car.travel += Math.max(0, car.forwardSpeed) * dt;
     if (!car.finished && sim.mode !== "pad") {
       car.lapClock += dt;
+      car.sectorClock += dt;
       car.sector = sectorProgress(car, track);
+      const passedGate = car.nextGate;
       const hit = checkGate(car, track);
+      if (hit === "gate" || hit === "lap") {
+        const completedSector = completedSectorForGate(passedGate, track.gates.length);
+        if (completedSector >= 0 && car.sectorClock > 0) {
+          car.sectorTimes[completedSector] = car.sectorClock;
+          const best = car.bestSectorTimes[completedSector] ?? 0;
+          if (best <= 0 || car.sectorClock < best) car.bestSectorTimes[completedSector] = car.sectorClock;
+          car.sectorClock = 0;
+          car.sectorIndex = (completedSector + 1) % SECTOR_COUNT;
+        }
+      }
       if (hit === "lap") {
         car.lastLap = car.lapClock;
         if (car.bestLap <= 0 || car.lapClock < car.bestLap) car.bestLap = car.lapClock;

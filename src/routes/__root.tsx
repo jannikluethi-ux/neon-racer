@@ -5,12 +5,15 @@ import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
   head: () => ({
-    meta: [
+      meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "Neon Racer" },
       { name: "description", content: "Neon Racer is a fast arcade circuit race. Drift, boost, and beat three rivals." },
       { name: "theme-color", content: "#07060c" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },

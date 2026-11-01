@@ -23,6 +23,9 @@ import { driftStateLabel } from "./vehicle";
 import { vehicleById } from "./vehicle-def";
 import { buildScene, disposeBundle, drawMinimap, syncCar, type CarPaint, type CarVis } from "./visuals";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 
 const STEP = 1 / 60;
 
@@ -121,7 +124,7 @@ function rankedResults(rank: readonly CarState[]): ResultRow[] {
 
 export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null): () => void {
   const params = new URLSearchParams(window.location.search);
-  const qa = params.get("qa") === "1";
+  const qa = import.meta.env.DEV && params.get("qa") === "1";
   const sim = createSim(qa);
   let raceBundle = buildScene(sim.track, paintsOf(sim));
   let padBundle = buildScene(sim.pad, paintsOf(sim));
@@ -129,11 +132,21 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   let shownKey = `${sim.track.id}:${sim.cars[0]!.vehicleId}`;
   const audio = new AudioDirector();
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
+  let renderer: THREE.WebGLRenderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
+  } catch {
+    window.dispatchEvent(new CustomEvent("game-fallback", { detail: "WebGL context could not be created." }));
+    return () => {};
+  }
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.08;
   renderer.shadowMap.enabled = false;
+  renderer.domElement.addEventListener("webglcontextlost", (event) => {
+    event.preventDefault();
+    window.dispatchEvent(new CustomEvent("game-fallback", { detail: "WebGL context lost." }));
+  });
   const pmrem = new THREE.PMREMGenerator(renderer);
   const room = new RoomEnvironment();
   const envTex = pmrem.fromScene(room, 0.04).texture;
@@ -150,6 +163,11 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   bindEnv(raceBundle.scene);
   bindEnv(padBundle.scene);
   const camera = new THREE.PerspectiveCamera(62, 1, 0.2, 2800);
+  const composer = new EffectComposer(renderer);
+  const renderPass = new RenderPass(bundle.scene, camera);
+  const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.48, 0.52, 0.78);
+  composer.addPass(renderPass);
+  composer.addPass(bloomPass);
 
   const applyQuality = () => {
     const q = useGame.getState().quality;
@@ -158,13 +176,23 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     const w = canvas.clientWidth || window.innerWidth || 1;
     const h = canvas.clientHeight || window.innerHeight || 1;
     renderer.setSize(w, h, false);
+    composer.setPixelRatio(Math.min(cap, window.devicePixelRatio || 1));
+    composer.setSize(w, h);
     camera.aspect = w / Math.max(1, h);
     camera.updateProjectionMatrix();
     const fog = bundle.scene.fog as THREE.FogExp2;
     const baseFog = typeof bundle.scene.userData.fogDensity === "number" ? bundle.scene.userData.fogDensity : 0.0042;
     if (fog) fog.density = q === "low" ? baseFog * 1.4 : q === "high" ? baseFog * 0.72 : baseFog;
     bundle.scene.environmentIntensity = q === "low" ? 0.45 : q === "high" ? 1.05 : 0.78;
-    renderer.toneMappingExposure = q === "low" ? 1.12 : q === "high" ? 1.45 : 1.32;
+    // Keep the bloom cinematic rather than bleaching the neon city. Mobile
+    // screens are already bright, so medium quality stays deliberately soft.
+    renderer.toneMappingExposure = q === "low" ? 1.05 : q === "high" ? 1.18 : 1.1;
+    // Medium is the phone-safe baseline. Only the explicit High setting pays
+    // for a bloom pass; low and medium stay on the direct renderer path.
+    bloomPass.enabled = q === "high";
+    bloomPass.strength = 0.24;
+    bloomPass.radius = 0.5;
+    bloomPass.threshold = 1.02;
     bundle.dressing.visible = q !== "low";
     const lamp = q === "low" ? 0 : q === "high" ? 6.2 : 3.3;
     for (const view of bundle.cars) {
@@ -173,11 +201,13 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     }
   };
 
-  window.__controlsTest = {
-    getYaw: () => playerCar(sim).yaw,
-    getSpeed: () => playerCar(sim).forwardSpeed,
-    setKeys: (codes: string[]) => setTestKeys(codes),
-  };
+  if (import.meta.env.DEV) {
+    window.__controlsTest = {
+      getYaw: () => playerCar(sim).yaw,
+      getSpeed: () => playerCar(sim).forwardSpeed,
+      setKeys: (codes: string[]) => setTestKeys(codes),
+    };
+  }
 
   const detachKeys = attachInput();
   const unlock = () => audio.unlock();
@@ -202,6 +232,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   let shake = 0;
   let raf = 0;
   let dead = false;
+  let lastQuality: "low" | "medium" | "high" = useGame.getState().quality;
   const clock = new THREE.Timer();
   clock.connect(document);
   const fwd = new THREE.Vector3();
@@ -254,6 +285,9 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     const showTime = player.finished && player.finishTime > 0 ? player.finishTime : sim.raceTime;
     const slide = clamp(Math.abs(player.slipAngle) / 0.42, 0, 1);
     const rival = focusRival(sim);
+    const record = useGame.getState().records[sim.track.id];
+    const sectorIndex = Math.max(0, Math.min(3, player.sectorIndex));
+    const sectorBest = record?.bestSectors?.[sectorIndex] ?? 0;
     useGame.setState({
       phase: sim.phase,
       speed: Math.abs(player.forwardSpeed) * 3.6,
@@ -272,7 +306,10 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       raceTime: showTime,
       lapTime: player.finished ? player.lastLap : player.lapClock,
       bestLap: player.bestLap > 0 ? player.bestLap : null,
-      ready: true,
+      sectorIndex,
+      sectorTime: player.sectorClock,
+      sectorBest: sectorBest > 0 ? sectorBest : null,
+      sectorDelta: sectorBest > 0 ? player.sectorClock - sectorBest : null,
       gaps: sim.mode === "pad" ? [] : gapList(rank),
       telemetry: {
         speed: Math.abs(player.forwardSpeed) * 3.6,
@@ -348,6 +385,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
         place: player.finishPlace,
         distance: player.travel,
         avg: player.finishTime > 0 ? (player.travel / player.finishTime) * 3.6 : null,
+        sectorTimes: player.bestSectorTimes,
       },
     );
     audio.finish();
@@ -368,6 +406,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     disposeBundle(padBundle);
     padBundle = buildScene(sim.pad, paintsOf(sim));
     bundle = sim.mode === "pad" ? padBundle : raceBundle;
+    renderPass.scene = bundle.scene;
     shownKey = key;
     bindEnv(raceBundle.scene);
     bindEnv(padBundle.scene);
@@ -389,6 +428,10 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     let steps = 0;
 
     const store = useGame.getState();
+    if (store.quality !== lastQuality) {
+      lastQuality = store.quality;
+      applyQuality();
+    }
     sim.difficulty = store.raceContext?.difficulty ?? store.difficulty;
     if (sim.phase === "menu") syncSelection(store.selectedTrack, store.selectedVehicle);
     if (store.startNonce !== seenStart) {
@@ -398,6 +441,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       if (store.course === "race") syncSelection(ctx?.trackId ?? store.selectedTrack, ctx?.vehicleId ?? store.selectedVehicle);
       else applyLineup(sim, store.selectedVehicle);
       bundle = sim.mode === "pad" ? padBundle : raceBundle;
+      renderPass.scene = bundle.scene;
       audio.unlock();
       startCountdown(sim);
       lastLabel = "";
@@ -419,6 +463,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       sim.phase = "menu";
       sim.countdown = 0;
       bundle = raceBundle;
+      renderPass.scene = bundle.scene;
     }
 
     let hitPeak = 0;
@@ -621,7 +666,9 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       camera.updateProjectionMatrix();
     }
 
-    renderer.render(bundle.scene, camera);
+    renderPass.scene = bundle.scene;
+    if (q !== "high") renderer.render(bundle.scene, camera);
+    else composer.render();
 
     hudAcc += frameDt;
     if (hudAcc > 0.05) {
@@ -642,7 +689,9 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     dead = true;
     cancelAnimationFrame(raf);
     setTestKeys([]);
-    delete window.__controlsTest;
+    if (import.meta.env.DEV) {
+      delete window.__controlsTest;
+    }
     detachKeys();
     clock.disconnect();
     window.removeEventListener("pointerdown", unlock);
@@ -653,6 +702,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     disposeBundle(padBundle);
     envTex.dispose();
     pmrem.dispose();
+    composer.dispose();
     renderer.dispose();
   };
 }

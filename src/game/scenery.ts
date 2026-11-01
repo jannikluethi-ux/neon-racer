@@ -807,7 +807,7 @@ function populateCoast(parent: THREE.Object3D, boxes: Batch, cyl: Batch, track: 
   const spanReach = Math.max(track.maxX - track.minX, track.maxZ - track.minZ);
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2 + 0.4;
-    let dist = spanReach * 0.42;
+    const dist = spanReach * 0.42;
     let x = c.x + Math.cos(a) * dist;
     let z = c.z + Math.sin(a) * dist;
     for (let n = 0; n < 6; n++) {

@@ -90,7 +90,7 @@ export const AI_CARS: AiProfile[] = [
   {
     name: "ION",
     color: 0xb26bff,
-    vehicleId: "vector",
+    vehicleId: "vanta",
     maxSpeedMul: 1,
     accelMul: 1,
     pace: 0.94,
@@ -109,7 +109,7 @@ export const AI_CARS: AiProfile[] = [
   {
     name: "NYX",
     color: 0xffb020,
-    vehicleId: "vector",
+    vehicleId: "surge",
     maxSpeedMul: 1,
     accelMul: 1,
     pace: 0.84,

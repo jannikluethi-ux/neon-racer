@@ -1,4 +1,5 @@
 import { cupById, CUPS, currentRound, ordinal, playerStanding, roundsOf, standings } from "@/game/championship";
+import { dailyEvent } from "@/game/daily";
 import { carMedal, carRequirement, masteryFill, medalName, RACE_MARKS, trackRequirement } from "@/game/mastery";
 import { formatRaceTime } from "@/game/math";
 import { isTrackUnlocked, isVehicleUnlocked, SAVE_VERSION } from "@/game/save";
@@ -39,6 +40,9 @@ export function TitleScreen() {
   const records = useGame((s) => s.records);
   const open = useGame((s) => s.openScreen);
   const row = records[track.id];
+  const daily = dailyEvent();
+  const dailyTrack = trackById(daily.trackId);
+  const dailyCar = vehicleById(daily.vehicleId);
   return (
     <section className="glass menu-card">
       <p className="eyebrow">Night circuit</p>
@@ -49,6 +53,9 @@ export function TitleScreen() {
       <div className="stack">
         <button type="button" className="btn btn-primary" onClick={() => open("cars", "race")}>
           Race
+        </button>
+        <button type="button" className="btn" onClick={() => useGame.getState().beginDailyRace()}>
+          Daily run
         </button>
         <button type="button" className="btn" onClick={() => open("cup", "cup")}>
           Championship
@@ -68,6 +75,14 @@ export function TitleScreen() {
         <button type="button" className="btn" onClick={() => useGame.getState().requestPad()}>
           Handling pad
         </button>
+      </div>
+      <div className="daily-card">
+        <div className="daily-head">
+          <span className="eyebrow">Daily event · {daily.label}</span>
+          <span className="daily-dot" aria-hidden />
+        </div>
+        <strong>{dailyCar.name} / {dailyTrack.name}</strong>
+        <small>One fresh combo each day. Beat your own line and chase a new medal.</small>
       </div>
       <p className="best-line">
         {row?.bestRace != null ? `Best race ${formatRaceTime(row.bestRace)}` : "No race time yet"}
@@ -484,4 +499,3 @@ export function CupConfirm() {
     </section>
   );
 }
-

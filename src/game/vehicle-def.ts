@@ -112,8 +112,8 @@ const VECTOR_BODY: BodyStyle = {
 /** Baseline car. Numbers are the original Apex tune — do not drift them. */
 export const VECTOR: VehicleDefinition = {
   id: "vector",
-  name: "VECTOR",
-  description: "Balanced street racer. Predictable, stable, and happy to flow.",
+  name: "VECTOR GT3",
+  description: "Balanced GT3 coupe. Predictable, stable, and happy to flow.",
   startsUnlocked: true,
   color: 0x2ee6ff,
   body: VECTOR_BODY,
@@ -196,8 +196,8 @@ export const VECTOR: VehicleDefinition = {
 /** Short-geared, light, rear-happy. Same tire model as Vector. */
 export const VANTA: VehicleDefinition = {
   id: "vanta",
-  name: "VANTA",
-  description: "High acceleration. Lower top speed. Rear-biased handling.",
+  name: "VANTA GT4",
+  description: "Short-wheelbase GT4 coupe. Explosive launch with a lively rear.",
   startsUnlocked: true,
   color: 0xff4d24,
   body: {
@@ -289,8 +289,8 @@ export const VANTA: VehicleDefinition = {
 /** Long gearing, low drag, calm rear. Slow until the straight opens up. */
 export const SURGE: VehicleDefinition = {
   id: "surge",
-  name: "SURGE",
-  description: "Top speed and high-speed stability. Weak out of slow corners.",
+  name: "SURGE LMP",
+  description: "Long-tail prototype. Top speed and high-speed stability.",
   startsUnlocked: false,
   color: 0xffe14a,
   body: {
@@ -382,8 +382,8 @@ export const SURGE: VehicleDefinition = {
 /** High grip and brakes. Runs out of breath on a long straight. */
 export const AEGIS: VehicleDefinition = {
   id: "aegis",
-  name: "AEGIS",
-  description: "Grip and braking. Precise in the tight stuff. Short on top speed.",
+  name: "AEGIS TCR",
+  description: "Wide touring car. Big brakes and grip for technical circuits.",
   startsUnlocked: false,
   color: 0x9fd4ff,
   body: {

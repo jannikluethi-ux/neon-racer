@@ -17,6 +17,8 @@ export type CarView = {
 	boost: THREE.Object3D;
 	glow: THREE.Mesh;
 	headLight: THREE.SpotLight;
+	tailLight: THREE.PointLight;
+	boostLight: THREE.PointLight;
 	hero: boolean;
 };
 
@@ -159,7 +161,10 @@ function silhouetteOf(style: BodyStyle): Silhouette {
   const [x, y, z] = style.body;
   if (z >= 1.15) return "long";
   if (x >= 1.2) return "wide";
-  if (y <= 0.85) return "sharp";
+  // Keep the short-wheelbase car a closed GT silhouette. The lower threshold
+  // reserves the sharper profile for a future open-cockpit class instead of
+  // making today's grid look like anonymous formula cars.
+  if (y <= 0.8) return "sharp";
   return "balanced";
 }
 
@@ -473,6 +478,31 @@ function roleFromColor(color: number): string {
   if (color === 0xb26bff) return "ion";
   if (color === 0xffb020) return "nyx";
   return "player";
+}
+
+function raceNumberFor(role: string): string {
+  if (role === "vex") return "13";
+  if (role === "ion") return "44";
+  if (role === "nyx") return "08";
+  return "27";
+}
+
+function numberTexture(role: string, accent: number): THREE.CanvasTexture {
+  return canvasTex((g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    g.fillStyle = "rgba(5, 8, 13, 0.88)";
+    g.beginPath();
+    g.roundRect(8, 18, w - 16, h - 36, 14);
+    g.fill();
+    g.strokeStyle = `#${accent.toString(16).padStart(6, "0")}`;
+    g.lineWidth = 6;
+    g.stroke();
+    g.fillStyle = "#f8fbff";
+    g.font = "900 70px Arial Narrow, Arial, sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(raceNumberFor(role), w / 2, h / 2 + 2);
+  }, 128, 80);
 }
 
 function wingPlane(span: number, chord: number, thick: number): THREE.BufferGeometry {
@@ -814,6 +844,21 @@ export function createCarView(color: number, style: BodyStyle = VECTOR.body, riv
   brakeBar.position.set(0, 0.7 * sy, tailLampZ - 0.004);
   chassis.add(brakeBar);
 
+  // A small race number and side number plates make the cars read as entries
+  // in a real grid instead of anonymous neon shapes at race distance.
+  const numberMap = numberTexture(role, look.accent);
+  const numberMat = new THREE.MeshBasicMaterial({ map: numberMap, transparent: true, toneMapped: false });
+  const rearNumber = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.44), numberMat);
+  rearNumber.position.set(0, 0.62 * sy, tailLampZ - 0.02);
+  rearNumber.rotation.y = Math.PI;
+  chassis.add(rearNumber);
+  for (const side of [-1, 1] as const) {
+    const sideNumber = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.34), numberMat.clone());
+    sideNumber.position.set(side * (front.w * 0.96 * sx), 0.64 * sy, -0.34 * sz);
+    sideNumber.rotation.y = side * Math.PI * 0.5;
+    chassis.add(sideNumber);
+  }
+
   const hoodVent = new THREE.Mesh(geos.lens, dark);
   hoodVent.scale.set(kind === "sharp" ? 0.22 : 0.12, 0.012, kind === "long" ? 0.16 : 0.28);
   hoodVent.position.set(0, 0.52 * sy, (front.z + 0.15) * sz);
@@ -826,6 +871,10 @@ export function createCarView(color: number, style: BodyStyle = VECTOR.body, riv
   target.position.set(0, 0.15, 16);
   headLight.target = target;
   chassis.add(headLight, target);
+
+  const tailLight = new THREE.PointLight(0xff1838, 0.08, 7, 2);
+  tailLight.position.set(0, 0.66 * sy, tailLampZ - 0.16);
+  chassis.add(tailLight);
 
   const boost = new THREE.Group();
   const flameA = new THREE.MeshBasicMaterial({ color: look.accent, transparent: true, opacity: 0.85 });
@@ -843,7 +892,24 @@ export function createCarView(color: number, style: BodyStyle = VECTOR.body, riv
   boost.visible = false;
   chassis.add(boost);
 
-  return { root, chassis, wheels, frontPivots, brakeMat, paint, boost, glow, headLight, hero: look.hero };
+  const boostLight = new THREE.PointLight(look.accent, 0, 6, 2);
+  boostLight.position.set(0, 0.34 * sy, flameZ - 0.22);
+  chassis.add(boostLight);
+
+  return {
+    root,
+    chassis,
+    wheels,
+    frontPivots,
+    brakeMat,
+    paint,
+    boost,
+    glow,
+    headLight,
+    tailLight,
+    boostLight,
+    hero: look.hero,
+  };
 }
 
 function ribbon(samples: Sample[], place: (s: Sample) => number[]): THREE.BufferGeometry {
@@ -943,7 +1009,7 @@ function asphaltTextures(kind: string): { map: THREE.CanvasTexture; rough: THREE
 		}, 256, 256)
 	};
 }
-function facadeTexture(warm: boolean): THREE.CanvasTexture {
+function _facadeTexture(warm: boolean): THREE.CanvasTexture {
 	return canvasTex((g, w, h) => {
 		g.fillStyle = warm ? "#2a241e" : "#1a222c";
 		g.fillRect(0, 0, w, h);
@@ -1174,7 +1240,7 @@ function addArch(parent: THREE.Object3D, gate: Gate, color: number, height: numb
 	group.add(left, right, bar);
 	parent.add(group);
 }
-function mulberry32(seed: number): () => number {
+function _mulberry32(seed: number): () => number {
 	let a = seed >>> 0;
 	return () => {
 		a |= 0;
@@ -1651,7 +1717,7 @@ function addStartGantry(parent: THREE.Object3D, track: Track, theme: TrackTheme)
 	}
 	parent.add(group);
 }
-function addCoast(parent: THREE.Object3D, track: Track, theme: TrackTheme): void {
+function _addCoast(parent: THREE.Object3D, track: Track, theme: TrackTheme): void {
 	const steel = new THREE.MeshStandardMaterial({
 		color: 1845302,
 		metalness: .55,
@@ -1723,7 +1789,7 @@ function addCoast(parent: THREE.Object3D, track: Track, theme: TrackTheme): void
 	parent.add(tower, band);
 	addGantry(parent, crest, "BRIDGE", theme.signStraight.color);
 }
-function addCore(parent: THREE.Object3D, track: Track, theme: TrackTheme): void {
+function _addCore(parent: THREE.Object3D, track: Track, theme: TrackTheme): void {
 	const steel = new THREE.MeshStandardMaterial({
 		color: 2364444,
 		metalness: .62,
@@ -1792,7 +1858,7 @@ function addCore(parent: THREE.Object3D, track: Track, theme: TrackTheme): void 
 	if (lights.instanceColor) lights.instanceColor.needsUpdate = true;
 	parent.add(towers, lights);
 }
-function addYard(parent: THREE.Object3D, track: Track, theme: TrackTheme): void {
+function _addYard(parent: THREE.Object3D, track: Track, theme: TrackTheme): void {
 	const steel = new THREE.MeshStandardMaterial({
 		color: 2761758,
 		metalness: .62,
@@ -1858,7 +1924,7 @@ function addYard(parent: THREE.Object3D, track: Track, theme: TrackTheme): void 
 		parent.add(cable);
 	}
 }
-function addTunnel(parent: THREE.Object3D, track: Track, theme: TrackTheme): void {
+function _addTunnel(parent: THREE.Object3D, track: Track, theme: TrackTheme): void {
 	const limit = theme.tunnelBelow;
 	if (limit == null) return;
 	const picks = [];
@@ -1933,12 +1999,14 @@ export function syncCar(view: CarView, car: CarState, pitch: number, vis?: CarVi
 	}
 	for (const w of view.wheels) w.rotation.x = vis ? vis.spin : car.wheelSpin;
 	for (const p of view.frontPivots) p.rotation.y = (vis ? vis.steer : car.steerVisual) * .42;
-	const brake = car.brakeVisual;
-	view.brakeMat.emissiveIntensity = .25 + brake * brake * 4.5;
-	view.boost.visible = car.boostBlend > .05;
-	const stretch = .45 + car.boostBlend * 1.35;
-	view.boost.scale.set(1, 1, stretch);
-	view.paint.emissiveIntensity = .03 + car.crashPulse * .45 + (car.boosting ? .1 : 0);
+  const brake = car.brakeVisual;
+  view.brakeMat.emissiveIntensity = .25 + brake * brake * 4.5;
+  view.tailLight.intensity = .12 + brake * brake * 2.8;
+  view.boost.visible = car.boostBlend > .05;
+  const stretch = .45 + car.boostBlend * 1.35;
+  view.boost.scale.set(1, 1, stretch);
+  view.boostLight.intensity = car.boosting ? 1.4 + car.boostBlend * 2.4 : 0;
+  view.paint.emissiveIntensity = .03 + car.crashPulse * .45 + (car.boosting ? .1 : 0);
 	const glowMat = view.glow.material as THREE.MeshBasicMaterial;
 	glowMat.opacity = (view.hero ? .1 : .04) + (car.boosting ? .16 : 0);
 }
