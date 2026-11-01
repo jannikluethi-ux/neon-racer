@@ -368,3 +368,8 @@ All five planning questions are resolved. These are binding for build sessions:
 5. **Sign-in (task e):** deleting `src/lib/auth` is not enough — also remove the **identity gate** (`gate-identity.server.ts`) and **`AuthProvider`** so there is **no sign-in code path at all**. Do **not** rely on `.grok/app-env.json` (not in the GitHub repo, so a Vercel deploy would never see it). Eliminate sign-in by removing the code.
 
 **Also confirmed:** copy `PLAN.md` into the repo root (so later sessions and CI can find it) and **pin Node 22 in CI**.
+---
+
+## Progress
+
+**Task c (CI):** Added `.github/workflows/ci.yml` (push/PR to main, Node 22, npm cache, npm ci, full GATE). `.grok`-dependent tests skip cleanly (4 `# SKIP`). GATE passes from clean `npm ci`. Commit `5ea5c29`. Push pending: OAuth token lacks the `workflow` scope.
