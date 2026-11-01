@@ -375,3 +375,5 @@ All five planning questions are resolved. These are binding for build sessions:
 **Task c (CI):** Added `.github/workflows/ci.yml` (push/PR to main, Node 22, npm cache, npm ci, full GATE). `.grok`-dependent tests skip cleanly (4 `# SKIP`). GATE passes from clean `npm ci`. Commit `5ea5c29`. Push pending: OAuth token lacks the `workflow` scope.
 
 **Task d (Pause menu):** Added `paused` boolean (separate from Phase), Escape/P + tab-hidden auto-pause, gamepad Start, overlay with Resume/Restart/Quit, physics+timers frozen in engine loop. New `pause.test.ts` asserts race time doesn't advance while paused. GATE passes. Commit `03f6f72`.
+
+**Task e (Template cleanup):** Deleted src/lib/{auth,app-data,multiplayer,db.ts}, migrations/, AuthProvider, gate-identity + their tests; inlined CONNECTOR_TOKEN_READY_EVENT into preview-host-bridge. Removed 40 unused deps (kept zod, lucide-react, tsx, three, react, zustand). Deleted 6 _-prefixed visuals.ts funcs + unused public/assets JSON. Renamed package to neon-racer. No sign-in path remains. GATE passes (test count 188+1 after removing migration tests). Commit `9b3f4a8`.
