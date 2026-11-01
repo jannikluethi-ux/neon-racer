@@ -63,6 +63,24 @@ function gamepadBits(): { steer: number; throttle: number; brake: number; drift:
   return { steer: 0, throttle: 0, brake: 0, drift: false, boost: false };
 }
 
+/** Edge-triggered gamepad pause button (standard button 9 = Start/Options).
+ * Returns true only on the frame the button is newly pressed, so holding it
+ * toggles once. Polled once per frame from the engine loop. */
+let gamepadPausePrev = false;
+export function gamepadPausePressed(): boolean {
+  const pads = navigator.getGamepads?.() ?? [];
+  let pressed = false;
+  for (const pad of pads) {
+    if (pad && (pad.buttons[9]?.value ?? 0) > 0.5) {
+      pressed = true;
+      break;
+    }
+  }
+  const edge = pressed && !gamepadPausePrev;
+  gamepadPausePrev = pressed;
+  return edge;
+}
+
 /** Shared command for keyboard, touch, and gamepad. */
 export function readCommand(): InputCommand {
   let steer = 0;

@@ -31,8 +31,30 @@ export function NeonRacer() {
   const phase = useGame((s) => s.phase);
   const course = useGame((s) => s.course);
   const screen = useGame((s) => s.screen);
+  const paused = useGame((s) => s.paused);
   const touchMode = useGame((s) => s.touch);
   const [engineError, setEngineError] = useState<string | null>(null);
+
+  // Escape / P toggle pause during a race; auto-pause when the tab is hidden.
+  useEffect(() => {
+    const racing = phase === "grid" || phase === "countdown" || phase === "racing" || phase === "finishing";
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!racing) return;
+      if (e.code === "Escape" || e.code === "KeyP") {
+        e.preventDefault();
+        useGame.getState().togglePaused();
+      }
+    };
+    const onVisibility = () => {
+      if (document.hidden && racing) useGame.getState().setPaused(true);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [phase]);
 
   useEffect(() => {
     useGame.getState().hydrate(loadSave());
@@ -96,6 +118,28 @@ export function NeonRacer() {
       {(phase === "menu" && screen === "cup-diff") && <CupDifficulty />}
       {(phase === "menu" && screen === "cup-brief") && <CupBrief />}
       {(phase === "grid" || phase === "countdown" || phase === "racing" || phase === "finishing") && <Hud />}
+      {paused && (phase === "grid" || phase === "countdown" || phase === "racing" || phase === "finishing") && (
+        <div className="pause-overlay" role="dialog" aria-modal="true" aria-label="Paused">
+          <div className="glass menu-card pause-card">
+            <p className="eyebrow">Race</p>
+            <h1>PAUSED</h1>
+            <div className="stack">
+              <button type="button" className="btn btn-primary" onClick={() => useGame.getState().setPaused(false)}>
+                Resume
+              </button>
+              <button type="button" className="btn" onClick={() => useGame.getState().requestRestart()}>
+                <RotateCcw size={18} />
+                Restart
+              </button>
+              <button type="button" className="btn" onClick={() => useGame.getState().requestMenu("title")}>
+                <House size={18} />
+                Quit
+              </button>
+            </div>
+            <p className="result-meta">Esc / P to resume · controllers: press pause</p>
+          </div>
+        </div>
+      )}
       <MobileRaceHint phase={phase} />
       {(phase === "grid" || phase === "countdown" || phase === "racing" || phase === "finishing") &&
       import.meta.env.DEV ? (

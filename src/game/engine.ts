@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { AudioDirector } from "./audio";
-import { attachInput, readCommand, setTestKeys } from "./input";
+import { attachInput, gamepadPausePressed, readCommand, setTestKeys } from "./input";
 import { clamp, wrapAngle } from "./math";
 import { timeGapSeconds } from "./race";
 import {
@@ -428,6 +428,14 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     let steps = 0;
 
     const store = useGame.getState();
+    // Gamepad Start/Options toggles pause during a race (edge-triggered so a
+    // held button only toggles once).
+    if (
+      gamepadPausePressed() &&
+      (sim.phase === "grid" || sim.phase === "countdown" || sim.phase === "racing" || sim.phase === "finishing")
+    ) {
+      useGame.getState().togglePaused();
+    }
     if (store.quality !== lastQuality) {
       lastQuality = store.quality;
       applyQuality();
@@ -467,7 +475,11 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     }
 
     let hitPeak = 0;
-    while (acc >= STEP && steps < 5) {
+    // Freeze physics and race timers while paused: skip the step loop
+    // entirely so stepSim (which advances sim.raceTime, lapClock, etc.)
+    // is never called. Rendering continues so the frozen frame stays on
+    // screen behind the pause overlay.
+    while (!store.paused && acc >= STEP && steps < 5) {
       for (let i = 0; i < sim.cars.length; i++) {
         const pose = prevPose[i];
         const car = sim.cars[i];
@@ -512,22 +524,24 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
         gapShown[car.id] = prev + (raw - prev) * (1 - Math.exp(-frameDt / 0.32));
       }
     }
-    audio.setVolume(store.volume);
-    audio.update({
-      rpm: player.rpm,
-      throttle: player.throttleVisual,
-      brake: player.brakeVisual,
-      drift: player.driftState >= 2,
-      slip: player.slip,
-      slipAngle: Math.abs(player.slipAngle),
-      boosting: player.boosting,
-      shifts: player.shifts,
-      gear: player.gear,
-      speed: Math.abs(player.forwardSpeed),
-      driftState: player.driftState,
-      track: sim.mode === "pad" ? "apex" : sim.track.id,
-      vehicle: player.vehicleId,
-    });
+    if (!store.paused) {
+      audio.setVolume(store.volume);
+      audio.update({
+        rpm: player.rpm,
+        throttle: player.throttleVisual,
+        brake: player.brakeVisual,
+        drift: player.driftState >= 2,
+        slip: player.slip,
+        slipAngle: Math.abs(player.slipAngle),
+        boosting: player.boosting,
+        shifts: player.shifts,
+        gear: player.gear,
+        speed: Math.abs(player.forwardSpeed),
+        driftState: player.driftState,
+        track: sim.mode === "pad" ? "apex" : sim.track.id,
+        vehicle: player.vehicleId,
+      });
+    }
     impactCooldown = Math.max(0, impactCooldown - frameDt);
     if (hitPeak > 0.05 && hitPeak > crashArmed + 0.04 && impactCooldown <= 0) {
       audio.impact(hitPeak, contactPan(player, sim.cars));

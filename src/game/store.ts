@@ -196,6 +196,10 @@ type GameState = {
   startNonce: number;
   restartNonce: number;
   menuNonce: number;
+  /** Separate flag (not a Phase member) so no `phase ===` comparison changes. */
+  paused: boolean;
+  togglePaused: () => void;
+  setPaused: (paused: boolean) => void;
   requestStart: () => void;
   requestPad: () => void;
   requestRestart: () => void;
@@ -317,15 +321,18 @@ export const useGame = create<GameState>((set, get) => ({
   startNonce: 0,
   restartNonce: 0,
   menuNonce: 0,
+  paused: false,
+  setPaused: (paused) => set({ paused }),
+  togglePaused: () => set((s) => ({ paused: !s.paused })),
   unlockAll: import.meta.env.DEV,
   setUnlockAll: (unlockAll) => set({ unlockAll }),
   cup: null,
   cupPick: "neon-cup",
   raceContext: null,
   confirm: null,
-  requestStart: () => set((s) => ({ startNonce: s.startNonce + 1, settingsOpen: false, course: "race", screen: "title" })),
+  requestStart: () => set((s) => ({ startNonce: s.startNonce + 1, settingsOpen: false, course: "race", screen: "title", paused: false })),
   requestPad: () => set((s) => ({ startNonce: s.startNonce + 1, settingsOpen: false, course: "pad", screen: "title" })),
-  requestRestart: () => set((s) => ({ restartNonce: s.restartNonce + 1 })),
+  requestRestart: () => set((s) => ({ restartNonce: s.restartNonce + 1, paused: false })),
   requestMenu: (screen = "title") =>
     set((s) => ({
       menuNonce: s.menuNonce + 1,
@@ -334,6 +341,7 @@ export const useGame = create<GameState>((set, get) => ({
       flow: screen === "title" ? "browse" : s.flow,
       raceContext: null,
       confirm: null,
+      paused: false,
     })),
   openScreen: (screen, flow) => set((s) => ({ screen, flow: flow ?? s.flow, settingsOpen: screen === "settings" })),
   selectVehicle: (id) => {

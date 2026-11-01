@@ -1198,3 +1198,25 @@ input[type="range"] {
     text-shadow: none;
   }
 }
+
+/* Pause overlay: dims the frozen race frame and centers the menu card. */
+.pause-overlay {
+  position: absolute;
+  z-index: 9;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(4 8 14 / 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.pause-card {
+  position: static;
+  width: min(20rem, calc(100% - 2.5rem));
+  text-align: center;
+}
+
+.pause-card .stack {
+  margin-top: 0.5rem;
+}
