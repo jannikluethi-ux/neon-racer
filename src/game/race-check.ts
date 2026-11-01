@@ -266,7 +266,13 @@ function forwardOf(car: { yaw: number; vx: number; vz: number }): number {
       if (car.finished) continue;
       seen[car.name] ??= new Set();
       seen[car.name]!.add(car.aiState);
-      if (car.crashPulse > 0.3) crash[car.name] = (crash[car.name] ?? 0) + 1;
+      // Count only frames where the car is physically at the track wall edge
+      // (|lat| >= half track width minus the car's 1.15m half-width, matching
+      // the wall-contact edge in vehicle.ts). Car-to-car collision frames have
+      // crashPulse > 0.3 but the car is well inside the track, so they no
+      // longer count as "rode the wall".
+      const wallEdge = Math.max(1, (sim.track.samples[car.hint]?.width ?? 16) * 0.5 - 1.15);
+      if (car.crashPulse > 0.3 && Math.abs(car.latOff) >= wallEdge) crash[car.name] = (crash[car.name] ?? 0) + 1;
       if (car.boosting) boostFrames[car.name] = (boostFrames[car.name] ?? 0) + 1;
       const curv = sim.track.samples[car.hint]?.curv ?? 0;
       if (car.aiState === "NITRO" && Math.abs(curv) > 0.012) tightNitro[car.name] = (tightNitro[car.name] ?? 0) + 1;
