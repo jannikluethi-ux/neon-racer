@@ -373,3 +373,5 @@ All five planning questions are resolved. These are binding for build sessions:
 ## Progress
 
 **Task c (CI):** Added `.github/workflows/ci.yml` (push/PR to main, Node 22, npm cache, npm ci, full GATE). `.grok`-dependent tests skip cleanly (4 `# SKIP`). GATE passes from clean `npm ci`. Commit `5ea5c29`. Push pending: OAuth token lacks the `workflow` scope.
+
+**Task d (Pause menu):** Added `paused` boolean (separate from Phase), Escape/P + tab-hidden auto-pause, gamepad Start, overlay with Resume/Restart/Quit, physics+timers frozen in engine loop. New `pause.test.ts` asserts race time doesn't advance while paused. GATE passes. Commit `03f6f72`.
