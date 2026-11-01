@@ -6,8 +6,11 @@
  */
 
 import { z } from "zod";
-import { CONNECTOR_TOKEN_READY_EVENT } from "./app-data/types";
 import { resolveParentEmbedderOrigin } from "./preview-embedder-origin";
+
+/** Event name the connector bridge dispatches when a token becomes ready.
+ * (Inlined from the removed app-data template module; only this file uses it.) */
+const CONNECTOR_TOKEN_READY_EVENT = "grok:connector-token-ready";
 
 export {
   isGrokEmbedderOrigin,

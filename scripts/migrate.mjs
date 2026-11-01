@@ -15,7 +15,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import pg from "pg";
 import { pendingMigrations } from "./migration-plan.mjs";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -42,6 +41,10 @@ async function main() {
     return;
   }
 
+  // Lazy: `pg` is only needed when there are real migrations to apply. The
+  // template's `pg` dependency is removed in the cleanup pass, so this import
+  // must not run on builds with no DATABASE_URL / no migrations.
+  const { default: pg } = await import("pg");
   const pool = new pg.Pool({ connectionString: databaseUrl, max: 1 });
   const client = await pool.connect();
   try {
