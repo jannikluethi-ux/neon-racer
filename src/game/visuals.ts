@@ -4,7 +4,6 @@ import type { CarState } from "./types";
 import type { Gate, Sample, Track } from "./track";
 import { sampleAt } from "./track";
 import { themeFor, type TrackTheme } from "./track-def";
-import { addScenery } from "./scenery";
 import { VECTOR, type BodyStyle } from "./vehicle-def";
 
 export type CarView = {
@@ -1631,7 +1630,19 @@ export function buildScene(track: Track, carsIn: CarPaint[]): SceneBundle {
 		scene.add(glint);
 	}
 	addStartGantry(dressing, track, theme);
-	addScenery(dressing, track, theme);
+	// Scenery is pure visual dressing (never consulted by physics/AI/timing),
+	// so load it lazily to keep it out of the initial engine chunk. Splitting
+	// per track: only the selected track's theme module is fetched. Attaches
+	// to `dressing` when the module resolves; guarded so a disposed bundle
+	// (track switched away) never receives stale geometry.
+	void import("./scenery")
+		.then(({ addScenery }) => {
+			if (dressing.userData.disposed) return; // bundle disposed before load
+			addScenery(dressing, track, theme);
+		})
+		.catch(() => {
+			// Scenery is decorative; a failed load leaves the track playable.
+		});
 	for (let i = 0; i < 6; i++) {
 		const s = track.samples[Math.floor(i * track.samples.length / 6)];
 		const warm = theme.kind === "yard";
@@ -1704,6 +1715,9 @@ export function releaseObject(root: THREE.Object3D): void {
 	});
 }
 export function disposeBundle(bundle: SceneBundle): void {
+	// Mark the dressing group so a pending lazy scenery load (see buildScene)
+	// skips attaching geometry to an already-disposed bundle.
+	(bundle.dressing as THREE.Group & { userData?: Record<string, unknown> }).userData.disposed = true;
 	bundle.scene.traverse((obj) => {
 		const mesh = obj as THREE.Mesh;
 		if (mesh.geometry && !SHARED_GEOS.has(mesh.geometry)) mesh.geometry.dispose();
