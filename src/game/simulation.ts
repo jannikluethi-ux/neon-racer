@@ -142,6 +142,8 @@ function blankCar(id: string, name: string, color: number, isPlayer: boolean, ai
     nitroUses: 0,
     hint: -1,
     wheelSpin: 0,
+    kerbL: 0,
+    kerbR: 0,
     respawnArc: 0,
     prevX: 0,
     prevZ: 0,
@@ -260,6 +262,8 @@ export function placeGrid(sim: Sim): void {
     car.finishPlace = 0;
     car.stuck = 0;
     car.crashPulse = 0;
+    car.kerbL = 0;
+    car.kerbR = 0;
     car.steerVisual = 0;
     car.throttleVisual = 0;
     car.brakeVisual = 0;

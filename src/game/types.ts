@@ -107,6 +107,9 @@ export type CarState = {
   nitroUses: number;
   hint: number;
   wheelSpin: number;
+  /** Kerb ride height under the left/right tires, relative to the chassis (m). */
+  kerbL: number;
+  kerbR: number;
   respawnArc: number;
   prevX: number;
   prevZ: number;

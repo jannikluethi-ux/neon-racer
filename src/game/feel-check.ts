@@ -128,6 +128,8 @@ function car(): CarState {
     nitroUses: 0,
     hint: -1,
     wheelSpin: 0,
+    kerbL: 0,
+    kerbR: 0,
     respawnArc: 0,
     prevX: 0,
     prevZ: 0,

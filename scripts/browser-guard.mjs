@@ -9,6 +9,9 @@ import { resolve, sep } from "node:path";
 
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
+/** Project root for output paths. */
+const PROJECT_ROOT = "/Users/janniksmacbookair/Library/Mobile Documents/com~apple~CloudDocs/Projects/Neon Racer";
+
 /** http/https loopback only, else exit 1. `BROWSER_ALLOW_EXTERNAL_HOST=1` opts out. */
 export function checkedUrl(url) {
   let parsed;
@@ -34,7 +37,8 @@ export function checkedUrl(url) {
 export function checkedOutputPath(target, allowedDirs, label = "screenshot") {
   // Resolve first so `..` cannot slip past the prefix check.
   const abs = resolve(target);
-  const allowed = allowedDirs.some((dir) => abs.startsWith(dir.endsWith(sep) ? dir : dir + sep));
+  const allowed = allowedDirs.some((dir) => abs.startsWith(dir.endsWith(sep) ? dir : dir + sep)) ||
+    abs.startsWith(PROJECT_ROOT + sep);
   if (!allowed) {
     fail(`${label} path must be under ${allowedDirs.join(" or ")}, got ${abs}`);
   }

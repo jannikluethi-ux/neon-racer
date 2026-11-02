@@ -20,9 +20,9 @@ import { useGame, type GapRow, type ResultRow } from "./store";
 import { PRESENT } from "./tuning";
 import type { CarState } from "./types";
 import { driftStateLabel } from "./vehicle";
-import { vehicleById } from "./vehicle-def";
 import { buildScene, disposeBundle, drawMinimap, syncCar, type CarPaint, type CarVis } from "./visuals";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { buildEnvironment, type BuiltEnvironment } from "./environment";
+import { themeFor } from "./track-def";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
@@ -61,7 +61,7 @@ function blendPose(out: CarVis, prev: CarVis, car: CarState, t: number): void {
 function paintsOf(sim: Sim): CarPaint[] {
   return sim.cars.map((car) => ({
     color: car.color,
-    body: vehicleById(car.vehicleId).body,
+    id: car.vehicleId,
     rival: !car.isPlayer,
   }));
 }
@@ -133,6 +133,8 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   const audio = new AudioDirector();
 
   let renderer: THREE.WebGLRenderer;
+  /** Dev-only QA camera: park the view on one car and optionally hold time. */
+  let inspect: InspectSpec | null = null;
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
   } catch {
@@ -143,22 +145,22 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.08;
   renderer.shadowMap.enabled = false;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.addEventListener("webglcontextlost", (event) => {
     event.preventDefault();
     window.dispatchEvent(new CustomEvent("game-fallback", { detail: "WebGL context lost." }));
   });
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const room = new RoomEnvironment();
-  const envTex = pmrem.fromScene(room, 0.04).texture;
-  room.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    mesh.geometry?.dispose();
-    const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
-    if (Array.isArray(material)) material.forEach((item) => item.dispose());
-    else material?.dispose();
-  });
+  // Reflections come from a theme-matched night environment rather than a
+  // white studio, so paint keeps its colour under clearcoat reflections.
+  let raceEnv: BuiltEnvironment = buildEnvironment(renderer, themeFor(sim.track.themeId));
+  const padEnv: BuiltEnvironment = buildEnvironment(renderer, themeFor(sim.pad.themeId));
   const bindEnv = (scene: THREE.Scene) => {
-    scene.environment = envTex;
+    scene.environment = scene === padBundle.scene ? padEnv.texture : raceEnv.texture;
+  };
+  const rebuildRaceEnv = () => {
+    raceEnv.dispose();
+    raceEnv = buildEnvironment(renderer, themeFor(sim.track.themeId));
+    raceBundle.scene.environment = raceEnv.texture;
   };
   bindEnv(raceBundle.scene);
   bindEnv(padBundle.scene);
@@ -172,6 +174,22 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   const applyQuality = () => {
     const q = useGame.getState().quality;
     const cap = q === "low" ? 0.75 : q === "high" ? 1.5 : 1.1;
+    // Shadows are the single biggest cost per frame: off on Low, a 1024 map
+    // on Medium, 2048 on High. Cars are the only casters, so the map is small
+    // and always in motion around the player.
+    renderer.shadowMap.enabled = q !== "low";
+    renderer.shadowMap.type = q === "high" ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    const wantSize = q === "high" ? 2048 : 1024;
+    for (const scene of [raceBundle.scene, padBundle.scene]) {
+      const sun = scene.userData.sun as THREE.DirectionalLight | undefined;
+      if (!sun) continue;
+      sun.castShadow = q !== "low";
+      if (sun.shadow.mapSize.x !== wantSize) {
+        sun.shadow.mapSize.set(wantSize, wantSize);
+        sun.shadow.map?.dispose();
+        sun.shadow.map = null;
+      }
+    }
     renderer.setPixelRatio(Math.min(cap, window.devicePixelRatio || 1));
     const w = canvas.clientWidth || window.innerWidth || 1;
     const h = canvas.clientHeight || window.innerHeight || 1;
@@ -206,6 +224,14 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       getYaw: () => playerCar(sim).yaw,
       getSpeed: () => playerCar(sim).forwardSpeed,
       setKeys: (codes: string[]) => setTestKeys(codes),
+      setInspect: (spec) => {
+        inspect = spec;
+      },
+      clearInspect: () => {
+        inspect = null;
+      },
+      carCount: () => sim.cars.length,
+      phase: () => sim.phase,
     };
   }
 
@@ -408,6 +434,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     bundle = sim.mode === "pad" ? padBundle : raceBundle;
     renderPass.scene = bundle.scene;
     shownKey = key;
+    rebuildRaceEnv();
     bindEnv(raceBundle.scene);
     bindEnv(padBundle.scene);
     if (sim.phase === "menu") {
@@ -479,7 +506,8 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     // entirely so stepSim (which advances sim.raceTime, lapClock, etc.)
     // is never called. Rendering continues so the frozen frame stays on
     // screen behind the pause overlay.
-    while (!store.paused && acc >= STEP && steps < 5) {
+    const frozen = inspect !== null && inspect.freeze !== false;
+    while (!store.paused && !frozen && acc >= STEP && steps < 5) {
       for (let i = 0; i < sim.cars.length; i++) {
         const pose = prevPose[i];
         const car = sim.cars[i];
@@ -667,6 +695,21 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     lookZ += (targetLookZ - lookZ) * k;
     shake *= Math.exp(-frameDt * 6);
 
+    if (inspect) {
+      // QA camera: hold a fixed orbit around one car (dev harness only).
+      const idx = clamp(Math.trunc(inspect.car ?? 0), 0, sim.cars.length - 1);
+      const pose = shown[idx] ?? shown[0]!;
+      const a = pose.yaw + (inspect.angle ?? Math.PI);
+      const d = inspect.dist ?? 9;
+      camera.up.set(0, 1, 0);
+      camera.position.set(pose.x - Math.sin(a) * d, pose.y + (inspect.height ?? 2.2), pose.z - Math.cos(a) * d);
+      camera.lookAt(pose.x, pose.y + (inspect.look ?? 0.55), pose.z);
+      const wantFov = inspect.fov ?? 46;
+      if (Math.abs(camera.fov - wantFov) > 0.05) {
+        camera.fov = wantFov;
+        camera.updateProjectionMatrix();
+      }
+    } else {
     camera.position.set(camX + Math.sin(now * 23) * shake, camY + Math.cos(now * 19) * shake * 0.55, camZ);
     const tilt =
       sim.phase === "menu" || reduced ? 0 : player.steerVisual * -0.02 + clamp(player.latAccel / 14, -1, 1) * -0.08;
@@ -678,6 +721,17 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     if (Math.abs(camera.fov - fov) > 0.05) {
       camera.fov += (fov - camera.fov) * Math.min(1, frameDt * 4);
       camera.updateProjectionMatrix();
+    }
+    }
+
+    // Keep the shadow camera tight around the player so one 1024/2048 map
+    // covers the car and the tarmac it sits on.
+    const sun = bundle.scene.userData.sun as THREE.DirectionalLight | undefined;
+    if (sun && sun.castShadow) {
+      const focus = shown[0] ?? player;
+      sun.position.set(focus.x + 60, focus.y + 92, focus.z + 22);
+      sun.target.position.set(focus.x, focus.y, focus.z);
+      sun.target.updateMatrixWorld();
     }
 
     renderPass.scene = bundle.scene;
@@ -714,8 +768,8 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     ro.disconnect();
     disposeBundle(raceBundle);
     disposeBundle(padBundle);
-    envTex.dispose();
-    pmrem.dispose();
+    raceEnv.dispose();
+    padEnv.dispose();
     composer.dispose();
     renderer.dispose();
   };

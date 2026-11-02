@@ -3,6 +3,7 @@ import { evalTires } from "./tires";
 import { projectInto, type Projection, type Track } from "./track";
 import { PRESENT } from "./tuning";
 import { gearForSpeed, samplePower, specificForce, vehicleById } from "./vehicle-def";
+import { KERB_WHEEL_LAT, kerbSurfaceAt, kerbWeightProfile } from "./kerb";
 import type { CarState, InputCommand } from "./types";
 
 const scratch: Projection = {
@@ -278,7 +279,24 @@ export function stepCar(car: CarState, input: InputCommand, track: Track, dt: nu
     }
   }
 
-  const roadY = scratch.y;
+  // Kerbs are real geometry, so a car driving over one rides on it instead of
+  // sinking into it: each tire gets its own surface height and the chassis
+  // lifts to the higher of the two, which also keeps the wheel inside its arch.
+  const weights = kerbWeightProfile(track.samples);
+  const si = scratch.sampleIndex;
+  const nxt = (si + 1) % track.samples.length;
+  const seg = track.samples[si]!.segLen || 1;
+  const mix = Math.min(1, Math.max(0, (scratch.arc - track.samples[si]!.dist) / seg));
+  const wA = weights[si]!;
+  const wB = weights[nxt]!;
+  const kerbW = wA + (wB - wA) * mix;
+  const roadHalfK = scratch.width * 0.5;
+  const kerbL = kerbSurfaceAt(scratch.lat - KERB_WHEEL_LAT, roadHalfK, kerbW);
+  const kerbR = kerbSurfaceAt(scratch.lat + KERB_WHEEL_LAT, roadHalfK, kerbW);
+  const kerbLift = Math.max(kerbL, kerbR);
+  car.kerbL = kerbL - kerbLift;
+  car.kerbR = kerbR - kerbLift;
+  const roadY = scratch.y + kerbLift;
   if (!car.airborne && scratch.jump && !car.wasJump && forwardSpeed > 34) {
     car.airborne = true;
     car.vy = 6.2 + Math.max(0, forwardSpeed) * 0.045;
@@ -295,7 +313,10 @@ export function stepCar(car: CarState, input: InputCommand, track: Track, dt: nu
       car.airborne = false;
     }
   } else {
-    car.y += (roadY - car.y) * Math.min(1, dt * 14);
+    // Snap to the sampled surface: it is the exact plane the road mesh is
+    // lofted from, so any smoothing here is pure lag that makes the car hover
+    // over crests and sink into dips.
+    car.y = roadY;
     car.vy = 0;
   }
 

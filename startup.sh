@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-cd /workspace
+cd "/Users/janniksmacbookair/Library/Mobile Documents/com~apple~CloudDocs/Projects/Neon Racer"
 node scripts/preview.mjs stop || true
 if curl -sf -o /dev/null --max-time 2 http://127.0.0.1:8080/; then
   exit 0
