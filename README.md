@@ -24,10 +24,21 @@ racing — no install, no download, just open and drive.
 - **Installable PWA** — add it to your home screen on iOS/Android.
 - **Keyboard, touch, and gamepad** support.
 
-> **Note on the cars:** VECTOR GT3, VANTA GT4, SURGE LMP, and AEGIS TCR are
-> **placeholder models being redesigned**. Their stats and art are isolated in
-> `src/game/vehicle-def.ts` and `src/game/visuals.ts` so they can be swapped
-> without touching the rest of the game.
+The four cars are authored shapes, not one blob scaled four ways. Stats live
+in `src/game/vehicle-def.ts`; the meshes live in `src/game/car-model.ts`.
+
+| Car | Wheelbase | Body width | Floor above wheel datum | Static floor-to-asphalt clearance |
+| --- | ---: | ---: | ---: | ---: |
+| VECTOR GT3 | 2.50 m | 2.14 m | 0.145 m | 0.115 m |
+| VANTA GT4 | 2.38 m | 2.24 m | 0.150 m | 0.120 m |
+| SURGE LMP | 2.82 m | 2.20 m | 0.140 m | 0.110 m |
+| AEGIS TCR | 2.52 m | 2.36 m | 0.150 m | 0.120 m |
+
+Wheelbase is measured between the modeled axle stations. Body width is twice
+the widest body station. The floor height is measured from the wheel-contact
+datum; the rendered asphalt deck is 0.030 m above that datum. The final column
+is the nominal clearance for a level, stationary car (`floor height − 0.030 m`);
+suspension movement and road grade change clearance while driving.
 
 ## Controls
 

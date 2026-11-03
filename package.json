@@ -16,8 +16,8 @@
     "preview:stop": "node scripts/preview.mjs stop",
     "typecheck": "tsc --noEmit",
     "check:auth": "node scripts/check-auth-invariant.mjs",
-    "test": "node --test 'scripts/**/*.test.mjs' && tsx --test src/game/pause.test.ts",
-    "test:game": "tsx src/game/race-check.ts && tsx src/game/feel-check.ts",
+    "test": "node --test 'scripts/**/*.test.mjs' && node --import tsx --test src/game/pause.test.ts src/game/kerb.test.ts src/game/contact.test.ts src/game/road-winding.test.ts",
+    "test:game": "node --import tsx src/game/race-check.ts && node --import tsx src/game/feel-check.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

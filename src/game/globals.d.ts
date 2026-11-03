@@ -9,6 +9,30 @@ declare global {
       clearInspect: () => void;
       carCount: () => number;
       phase: () => string;
+      /** Dev-only: park car 0 on the live track for contact stills. */
+      placeAt: (arc: number, lat: number) => void;
+      trackProbe: () => {
+        crest: number;
+        uphill: number;
+        downhill: number;
+        transition: number;
+        kerb: number;
+        kerbGradient: number;
+        half: number;
+        length: number;
+      };
+      setQuality: (quality: "low" | "medium" | "high") => void;
+      setDressingVisible: (visible: boolean) => void;
+      renderStats: () => {
+        calls: number;
+        triangles: number;
+        geometries: number;
+        textures: number;
+        programs: number;
+        dressingVisible: boolean;
+        sceneGeometries: number;
+        sceneTextures: number;
+      };
     };
   }
 

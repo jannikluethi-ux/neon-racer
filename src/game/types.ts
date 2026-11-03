@@ -110,6 +110,16 @@ export type CarState = {
   /** Kerb ride height under the left/right tires, relative to the chassis (m). */
   kerbL: number;
   kerbR: number;
+  /**
+   * Vertical contact only. Nose-up pitch and left-up roll of the road plane
+   * under the four tires, plus each wheel's leftover vs that plane (m).
+   * Order is FL, FR, RL, RR. Horizontal forces do not read these.
+   */
+  gradePitch: number;
+  gradeRoll: number;
+  wheelKerb: [number, number, number, number];
+  /** Unit world-space road normal under each wheel, in FL, FR, RL, RR order. */
+  wheelNormals: [[number, number, number], [number, number, number], [number, number, number], [number, number, number]];
   respawnArc: number;
   prevX: number;
   prevZ: number;

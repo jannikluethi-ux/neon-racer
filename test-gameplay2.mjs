@@ -1,4 +1,11 @@
 import { chromium } from "playwright";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { checkedOutputPath, outputRoots, repoRoot } from "./scripts/browser-guard.mjs";
+
+const screenshotDir = join(repoRoot(), "screenshots");
+mkdirSync(screenshotDir, { recursive: true });
+const screenshotPath = (name) => checkedOutputPath(join(screenshotDir, name), outputRoots());
 
 const browser = await chromium.launch({ headless: false, args: ["--no-sandbox"] });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
@@ -15,7 +22,7 @@ await page.waitForTimeout(3000);
 // Test cars menu
 await page.click("button:has-text('Cars')");
 await page.waitForTimeout(1500);
-await page.screenshot({ path: "/Users/janniksmacbookair/Library/Mobile Documents/com~apple~CloudDocs/Projects/Builder Apps/Neon Racer/screenshots/cars-menu.png" });
+await page.screenshot({ path: screenshotPath("cars-menu.png") });
 
 // Get all button texts
 const buttons = await page.$$eval("button", els => els.map(e => e.textContent?.trim()));
@@ -34,7 +41,7 @@ await page.waitForTimeout(1000);
 // Test tracks menu
 await page.click("button:has-text('Tracks')");
 await page.waitForTimeout(1500);
-await page.screenshot({ path: "/Users/janniksmacbookair/Library/Mobile Documents/com~apple~CloudDocs/Projects/Builder Apps/Neon Racer/screenshots/tracks-menu.png" });
+await page.screenshot({ path: screenshotPath("tracks-menu.png") });
 
 const buttons2 = await page.$$eval("button", els => els.map(e => e.textContent?.trim()));
 console.log("Buttons on tracks screen:", buttons2);

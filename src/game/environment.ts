@@ -63,11 +63,14 @@ export function buildEnvironment(renderer: THREE.WebGLRenderer, theme: TrackThem
   source.mapping = THREE.EquirectangularReflectionMapping;
   source.colorSpace = THREE.SRGBColorSpace;
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const texture = pmrem.fromEquirectangular(source).texture;
+  const target = pmrem.fromEquirectangular(source);
+  const texture = target.texture;
   source.dispose();
   pmrem.dispose();
   return {
     texture,
-    dispose: () => texture.dispose(),
+    // Keep and dispose the render target, not only its Texture. The target
+    // owns the framebuffer and depth/renderbuffer allocations used by PMREM.
+    dispose: () => target.dispose(),
   };
 }

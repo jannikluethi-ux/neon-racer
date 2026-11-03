@@ -3,25 +3,112 @@ import { evalTires } from "./tires";
 import { projectInto, type Projection, type Track } from "./track";
 import { PRESENT } from "./tuning";
 import { gearForSpeed, samplePower, specificForce, vehicleById } from "./vehicle-def";
-import { KERB_WHEEL_LAT, kerbSurfaceAt, kerbWeightProfile } from "./kerb";
+import { wheelLayout } from "./car-model";
+import { fitRoadGrade, planeHeight } from "./contact";
+import { kerbSurfaceAt, kerbSurfaceSlopeAt, kerbWeightProfile } from "./kerb";
 import type { CarState, InputCommand } from "./types";
 
-const scratch: Projection = {
-  sampleIndex: 0,
-  x: 0,
-  y: 0,
-  z: 0,
-  tx: 0,
-  ty: 0,
-  tz: 0,
-  rx: 0,
-  rz: 0,
-  lat: 0,
-  arc: 0,
-  width: 16,
-  curv: 0,
-  jump: false,
-};
+function blankProjection(): Projection {
+  return {
+    sampleIndex: 0,
+    x: 0,
+    y: 0,
+    z: 0,
+    tx: 0,
+    ty: 0,
+    tz: 0,
+    rx: 0,
+    rz: 0,
+    lat: 0,
+    arc: 0,
+    width: 16,
+    curv: 0,
+    jump: false,
+  };
+}
+
+const scratch: Projection = blankProjection();
+const wheelProj: Projection = blankProjection();
+
+function kerbAt(track: Track, proj: Projection): { height: number; slope: number } {
+  const weights = kerbWeightProfile(track.samples);
+  const n = track.samples.length;
+  const si = proj.sampleIndex;
+  const nxt = (si + 1) % n;
+  const seg = track.samples[si]!.segLen || 1;
+  let mix = (proj.arc - track.samples[si]!.dist) / seg;
+  if (mix < 0) mix = 0;
+  else if (mix > 1) mix = 1;
+  const w = weights[si]! + (weights[nxt]! - weights[si]!) * mix;
+  return {
+    height: kerbSurfaceAt(proj.lat, proj.width * 0.5, w),
+    slope: kerbSurfaceSlopeAt(proj.lat, proj.width * 0.5, w),
+  };
+}
+
+function roadNormal(proj: Projection, lateralSlope: number): [number, number, number] {
+  // right = (rx, dh/dlat, rz), tangent = (tx, ty, tz); right × tangent
+  // points above the road and includes both the track grade and kerb crown.
+  let x = lateralSlope * proj.tz - proj.rz * proj.ty;
+  let y = proj.rz * proj.tx - proj.rx * proj.tz;
+  let z = proj.rx * proj.ty - lateralSlope * proj.tx;
+  const length = Math.hypot(x, y, z) || 1;
+  x /= length;
+  y /= length;
+  z /= length;
+  return y < 0 ? [-x, -y, -z] : [x, y, z];
+}
+
+/**
+ * Sample the road under each tire and store the visual plane.
+ *
+ * This changes vertical position only: `car.y` becomes the height of the plane
+ * fitted through the four tire patches, and `gradePitch` / `gradeRoll` /
+ * `wheelKerb` describe that plane. Speed, yaw, and racing line are untouched.
+ * Returns the plane height at the origin, which is the surface the chassis sits on.
+ */
+export function applyContact(car: CarState, track: Track): number {
+  const layout = wheelLayout(car.vehicleId);
+  const spots: Array<[number, number]> = [
+    [layout.frontX, layout.frontZ],
+    [-layout.frontX, layout.frontZ],
+    [layout.rearX, layout.rearZ],
+    [-layout.rearX, layout.rearZ],
+  ];
+  const fx = -Math.sin(car.yaw);
+  const fz = -Math.cos(car.yaw);
+  const rightX = Math.cos(car.yaw);
+  const rightZ = -Math.sin(car.yaw);
+  const heights: [number, number, number, number] = [0, 0, 0, 0];
+  for (let i = 0; i < 4; i++) {
+    const localX = spots[i]![0];
+    const localZ = spots[i]![1];
+    const ox = -rightX * localX + fx * localZ;
+    const oz = -rightZ * localX + fz * localZ;
+    projectInto(track, car.x + ox, car.z + oz, car.hint, wheelProj);
+    const surface = kerbAt(track, wheelProj);
+    heights[i] = wheelProj.y + surface.height;
+    car.wheelNormals[i] = roadNormal(wheelProj, surface.slope);
+  }
+  const fit = fitRoadGrade(heights, layout);
+  car.gradePitch = fit.pitch;
+  car.gradeRoll = fit.roll;
+  const plane: [number, number, number, number] = [
+    planeHeight(fit, layout.frontX, layout.frontZ),
+    planeHeight(fit, -layout.frontX, layout.frontZ),
+    planeHeight(fit, layout.rearX, layout.rearZ),
+    planeHeight(fit, -layout.rearX, layout.rearZ),
+  ];
+  car.wheelKerb = [
+    heights[0] - plane[0],
+    heights[1] - plane[1],
+    heights[2] - plane[2],
+    heights[3] - plane[3],
+  ];
+  car.kerbL = Math.min(car.wheelKerb[0], car.wheelKerb[2]);
+  car.kerbR = Math.min(car.wheelKerb[1], car.wheelKerb[3]);
+  return fit.center;
+}
 
 const DRIFT_GRIP = 0;
 const DRIFT_LIMIT = 1;
@@ -279,24 +366,9 @@ export function stepCar(car: CarState, input: InputCommand, track: Track, dt: nu
     }
   }
 
-  // Kerbs are real geometry, so a car driving over one rides on it instead of
-  // sinking into it: each tire gets its own surface height and the chassis
-  // lifts to the higher of the two, which also keeps the wheel inside its arch.
-  const weights = kerbWeightProfile(track.samples);
-  const si = scratch.sampleIndex;
-  const nxt = (si + 1) % track.samples.length;
-  const seg = track.samples[si]!.segLen || 1;
-  const mix = Math.min(1, Math.max(0, (scratch.arc - track.samples[si]!.dist) / seg));
-  const wA = weights[si]!;
-  const wB = weights[nxt]!;
-  const kerbW = wA + (wB - wA) * mix;
-  const roadHalfK = scratch.width * 0.5;
-  const kerbL = kerbSurfaceAt(scratch.lat - KERB_WHEEL_LAT, roadHalfK, kerbW);
-  const kerbR = kerbSurfaceAt(scratch.lat + KERB_WHEEL_LAT, roadHalfK, kerbW);
-  const kerbLift = Math.max(kerbL, kerbR);
-  car.kerbL = kerbL - kerbLift;
-  car.kerbR = kerbR - kerbLift;
-  const roadY = scratch.y + kerbLift;
+  // Vertical contact only. The four tire patches set chassis height and the
+  // visual road plane. This block does not write vx, vz, yaw, or raceDist.
+  const roadY = applyContact(car, track);
   if (!car.airborne && scratch.jump && !car.wasJump && forwardSpeed > 34) {
     car.airborne = true;
     car.vy = 6.2 + Math.max(0, forwardSpeed) * 0.045;

@@ -77,6 +77,13 @@ class Batch {
   }
 
   flush(parent: THREE.Object3D, geo: THREE.BufferGeometry): void {
+    // Keep ownership even when a material has no instances on this track. A
+    // facade texture can be created for a batch that flushes no mesh, so scene
+    // traversal alone would miss it on the next circuit transition.
+    const ownedMaterials = (parent.userData.ownedSceneryMaterials ??= []) as THREE.Material[];
+    ownedMaterials.push(...this.mats);
+    const ownedGeometries = (parent.userData.ownedSceneryGeometries ??= []) as THREE.BufferGeometry[];
+    ownedGeometries.push(geo);
     for (let i = 0; i < this.mats.length; i++) {
       const list = this.lists[i];
       if (!list || list.length === 0) continue;

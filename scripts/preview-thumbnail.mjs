@@ -4,15 +4,12 @@
 // PNG is written; the service treats any non-zero exit as a gated skip and does
 // not download the file.
 import { chromium } from "playwright";
-import { checkedOutputPath, checkedUrl } from "./browser-guard.mjs";
+import { checkedOutputPath, checkedUrl, outputRoots } from "./browser-guard.mjs";
 
 // The service always passes a loopback URL and a /tmp path; the checks keep that
 // true when the script is invoked by hand.
 const url = checkedUrl(process.argv[2] || "http://127.0.0.1:8080/");
-const outPng = checkedOutputPath(process.argv[3] || "/tmp/preview-thumbnail.png", [
-  "/tmp",
-  "/workspace",
-]);
+const outPng = checkedOutputPath(process.argv[3] || "/tmp/preview-thumbnail.png", outputRoots());
 const timeoutMs = Number(process.env.PREVIEW_THUMBNAIL_TIMEOUT_MS || 45000);
 
 const browser = await chromium.launch({

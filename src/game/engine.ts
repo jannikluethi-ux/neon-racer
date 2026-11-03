@@ -19,7 +19,9 @@ import {
 import { useGame, type GapRow, type ResultRow } from "./store";
 import { PRESENT } from "./tuning";
 import type { CarState } from "./types";
-import { driftStateLabel } from "./vehicle";
+import { applyContact, driftStateLabel } from "./vehicle";
+import { sampleAt } from "./track";
+import { kerbWeightProfile } from "./kerb";
 import { buildScene, disposeBundle, drawMinimap, syncCar, type CarPaint, type CarVis } from "./visuals";
 import { buildEnvironment, type BuiltEnvironment } from "./environment";
 import { themeFor } from "./track-def";
@@ -135,6 +137,9 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   let renderer: THREE.WebGLRenderer;
   /** Dev-only QA camera: park the view on one car and optionally hold time. */
   let inspect: InspectSpec | null = null;
+  let forceDressingVisibleForQa = false;
+  /** Copy the live pose into the interpolator after a QA teleport. */
+  let snapPose = false;
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
   } catch {
@@ -145,7 +150,9 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.08;
   renderer.shadowMap.enabled = false;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  // Include every EffectComposer pass in the per-frame draw/triangle totals.
+  renderer.info.autoReset = false;
   renderer.domElement.addEventListener("webglcontextlost", (event) => {
     event.preventDefault();
     window.dispatchEvent(new CustomEvent("game-fallback", { detail: "WebGL context lost." }));
@@ -178,8 +185,14 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     // on Medium, 2048 on High. Cars are the only casters, so the map is small
     // and always in motion around the player.
     renderer.shadowMap.enabled = q !== "low";
-    renderer.shadowMap.type = q === "high" ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    // Three r186 removed PCFSoftShadowMap; PCFShadowMap is the supported path
+    // across all quality levels, with High gaining definition from its 2K map.
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     const wantSize = q === "high" ? 2048 : 1024;
+    // Half-extent of the ortho shadow, in light space. 34 m left a hard square
+    // on the ground beside the car. These values push that edge past a chase
+    // view without growing the map (texels get slightly larger, not more of them).
+    const shadowExtent = q === "high" ? 58 : 46;
     for (const scene of [raceBundle.scene, padBundle.scene]) {
       const sun = scene.userData.sun as THREE.DirectionalLight | undefined;
       if (!sun) continue;
@@ -188,6 +201,14 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
         sun.shadow.mapSize.set(wantSize, wantSize);
         sun.shadow.map?.dispose();
         sun.shadow.map = null;
+      }
+      const cam = sun.shadow.camera;
+      if (cam.left !== -shadowExtent) {
+        cam.left = -shadowExtent;
+        cam.right = shadowExtent;
+        cam.top = shadowExtent;
+        cam.bottom = -shadowExtent;
+        cam.updateProjectionMatrix();
       }
     }
     renderer.setPixelRatio(Math.min(cap, window.devicePixelRatio || 1));
@@ -232,6 +253,106 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       },
       carCount: () => sim.cars.length,
       phase: () => sim.phase,
+      /** Park car 0 on the live track. Used by visual QA, not by gameplay. */
+      placeAt: (arc: number, lat: number) => {
+        const s = sampleAt(sim.track, arc);
+        const car = sim.cars[0];
+        if (!car) return;
+        car.x = s.x + s.rx * lat;
+        car.z = s.z + s.rz * lat;
+        car.yaw = Math.atan2(-s.tx, -s.tz);
+        car.vx = 0;
+        car.vz = 0;
+        car.forwardSpeed = 0;
+        car.hint = -1;
+        car.airborne = false;
+        car.y = applyContact(car, sim.track);
+        snapPose = true;
+      },
+      trackProbe: () => {
+        const samples = sim.track.samples;
+        const kerbWeights = kerbWeightProfile(samples);
+        let crest = 0;
+        let uphill = 0;
+        let downhill = 0;
+        let transition = 0;
+        let kerb = 0;
+        let kerbGradient = 0;
+        let maxY = -Infinity;
+        let maxGrade = -Infinity;
+        let minGrade = Infinity;
+        let maxGradeChange = -Infinity;
+        let maxKerbGrade = -Infinity;
+        let maxCurv = 0;
+        for (let i = 0; i < samples.length; i++) {
+          const s = samples[i]!;
+          if (s.y > maxY) {
+            maxY = s.y;
+            crest = s.dist;
+          }
+          const n = samples[(i + 1) % samples.length]!;
+          const grade = (n.y - s.y) / (s.segLen || 1);
+          if (grade > maxGrade) {
+            maxGrade = grade;
+            uphill = s.dist;
+          }
+          if (grade < minGrade) {
+            minGrade = grade;
+            downhill = s.dist;
+          }
+          const p = samples[(i - 1 + samples.length) % samples.length]!;
+          const prevGrade = (s.y - p.y) / (p.segLen || 1);
+          const gradeChange = Math.abs(grade - prevGrade);
+          if (gradeChange > maxGradeChange) {
+            maxGradeChange = gradeChange;
+            transition = s.dist;
+          }
+          if (kerbWeights[i]! > 0 && Math.abs(grade) > maxKerbGrade) {
+            maxKerbGrade = Math.abs(grade);
+            kerbGradient = s.dist;
+          }
+          const curv = Math.abs(s.curv);
+          if (curv > maxCurv) {
+            maxCurv = curv;
+            kerb = s.dist;
+          }
+        }
+        const half = samples[0] ? samples[0].width * 0.5 : 8;
+        return { crest, uphill, downhill, transition, kerb, kerbGradient, half, length: sim.track.length };
+      },
+      setQuality: (quality: "low" | "medium" | "high") => {
+        useGame.getState().patchSettings({ quality });
+      },
+      /** QA-only override so all quality tiers can be measured with full scenery. */
+      setDressingVisible: (visible: boolean) => {
+        forceDressingVisibleForQa = visible;
+        bundle.dressing.visible = visible;
+      },
+      renderStats: () => {
+        const sceneGeometries = new Set<THREE.BufferGeometry>();
+        const sceneTextures = new Set<THREE.Texture>();
+        bundle.scene.traverse((obj) => {
+          const mesh = obj as THREE.Mesh;
+          if (mesh.geometry) sceneGeometries.add(mesh.geometry);
+          const material = mesh.material;
+          if (!material) return;
+          for (const mat of Array.isArray(material) ? material : [material]) {
+            for (const value of Object.values(mat)) {
+              if (value instanceof THREE.Texture) sceneTextures.add(value);
+            }
+          }
+        });
+        return {
+          calls: renderer.info.render.calls,
+          triangles: renderer.info.render.triangles,
+          geometries: renderer.info.memory.geometries,
+          textures: renderer.info.memory.textures,
+          programs: renderer.info.programs?.length ?? 0,
+          dressingVisible: bundle.dressing.visible,
+          sceneGeometries: sceneGeometries.size,
+          sceneTextures: sceneTextures.size,
+        };
+      },
     };
   }
 
@@ -525,6 +646,14 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       steps++;
     }
     if (steps === 5) acc = 0;
+    if (snapPose) {
+      for (let i = 0; i < sim.cars.length; i++) {
+        const pose = prevPose[i];
+        const car = sim.cars[i];
+        if (pose && car) copyPose(pose, car);
+      }
+      snapPose = false;
+    }
     const alpha = steps >= 5 ? 1 : acc / STEP;
     for (let i = 0; i < sim.cars.length; i++) {
       const pose = prevPose[i];
@@ -580,7 +709,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     if (player.boosting && !reduced) shake = Math.max(shake, 0.035);
 
     const q = store.quality;
-    bundle.dressing.visible = q !== "low";
+    bundle.dressing.visible = forceDressingVisibleForQa || q !== "low";
     const lamp = q === "low" ? 0 : q === "high" ? 6.2 : 3.3;
     for (let i = 0; i < sim.cars.length; i++) {
       const car = sim.cars[i]!;
@@ -735,6 +864,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     }
 
     renderPass.scene = bundle.scene;
+    renderer.info.reset();
     if (q !== "high") renderer.render(bundle.scene, camera);
     else composer.render();
 

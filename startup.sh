@@ -1,8 +1,9 @@
 #!/bin/sh
 set -eu
-cd "/Users/janniksmacbookair/Library/Mobile Documents/com~apple~CloudDocs/Projects/Neon Racer"
-node scripts/preview.mjs stop || true
+# Resolve from this file, so `sh startup.sh` works from any working directory
+# and from a checkout that is not the machine that first wrote the script.
+cd "$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
 if curl -sf -o /dev/null --max-time 2 http://127.0.0.1:8080/; then
   exit 0
 fi
-npm run dev >>/tmp/app-startup.log 2>&1 &
+nohup npm run dev >>/tmp/app-startup.log 2>&1 </dev/null &

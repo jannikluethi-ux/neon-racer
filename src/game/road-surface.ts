@@ -6,12 +6,17 @@ import {
   KERB_CROWN,
   KERB_FRONT,
   KERB_FLOOR,
-  KERB_MIN_ARC,
   KERB_OUT,
   KERB_W,
-  kerbSurfaceAt,
-  kerbWeightOf,
+  STUD_H,
+  kerbCrossSlope,
+  kerbRunIndices,
+  kerbStudLat,
+  kerbStudSurface,
+  kerbWeightProfile,
 } from "./kerb";
+import { faceToward } from "./road-winding";
+import { ROAD_DECK_Y } from "./contact";
 
 /**
  * Road / asphalt / kerb / barrier presentation for every circuit.
@@ -23,13 +28,10 @@ import {
  * because samples wrap (i -> i + 1 mod n); the closing station duplicates the
  * first one with a continuous `dist`, so no texture smears across the seam.
  *
- * Winding note: a two-vertex strip authored left-to-right faces downwards and
- * right-to-left upwards, while vertical strips face one fixed lateral side —
- * which is why the scene this replaces silently back-face-culled its road deck
- * and one whole side of kerbs/walls (the visible "road" was really the
- * underside slab). Every strip material here is therefore `DoubleSide`: three
- * flips the shading normal for back faces, so lighting stays correct and no
- * face ever goes missing.
+ * Winding note: each generated strip is oriented toward its intended visible
+ * side and has normals recomputed after the index order is corrected. Road,
+ * kerb, walkway and barrier faces use FrontSide; only the thin outer wall sheet
+ * stays DoubleSide because it is visible from both the track slot and outside.
  */
 
 export type RoadSurfaces = {
@@ -40,7 +42,7 @@ export type RoadSurfaces = {
 };
 
 /** Deck top above the sample centreline (same convention as the old road ribbon). */
-const SURFACE = 0.03;
+const SURFACE = ROAD_DECK_Y;
 /** Slab thickness below the deck. */
 const DECK = 0.14;
 /** Deck overhang so the slab reaches under the barrier face (no slot at the edge). */
@@ -73,6 +75,41 @@ const STUD_EVERY = 5;
 /** Peak alpha budgets for the surface decals (spec: keep them under ~0.35). */
 const LINE_ALPHA = 0.34;
 const PATCH_ALPHA = 0.32;
+
+/** Deterministic stand-in for R so a track looks the same every load. */
+let drawRandom: () => number = R;
+
+function R(): number {
+  return drawRandom();
+}
+
+export function mulberry32(seed: number): () => number {
+  let t = seed >>> 0;
+  return () => {
+    t = (t + 0x6d2b79f5) >>> 0;
+    let x = Math.imul(t ^ (t >>> 15), 1 | t);
+    x ^= x + Math.imul(x ^ (x >>> 7), 61 | x);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Stable seed for one circuit theme. Same kind + citySeed => same textures. */
+export function roadTextureSeed(kind: string, citySeed: number): number {
+  let h = (citySeed >>> 0) ^ 0x9e3779b9;
+  for (let i = 0; i < kind.length; i++) h = Math.imul(h ^ kind.charCodeAt(i), 0x85ebca6b);
+  return h >>> 0;
+}
+
+export function withRoadSeed<T>(seed: number, fn: (random: () => number) => T): T {
+  const prev = drawRandom;
+  drawRandom = mulberry32(seed);
+  const random = () => drawRandom();
+  try {
+    return fn(random);
+  } finally {
+    drawRandom = prev;
+  }
+}
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
@@ -191,15 +228,15 @@ function asphaltMap(theme: TrackTheme): THREE.CanvasTexture {
       // Aggregate: thousands of 1-2 px stones (wrapped at the edges so the tile
       // repeats without a seam).
       for (let i = 0; i < 14000; i++) {
-        const x = Math.floor(Math.random() * cw);
-        const y = Math.floor(Math.random() * ch);
-        const up = Math.random() > 0.5;
-        const delta = 16 + Math.random() * 34;
+        const x = Math.floor(R() * cw);
+        const y = Math.floor(R() * ch);
+        const up = R() > 0.5;
+        const delta = 16 + R() * 34;
         const c = up
           ? [base[0] + delta, base[1] + delta, base[2] + delta]
           : [base[0] - delta, base[1] - delta, base[2] - delta];
         g.fillStyle = `rgba(${clampByte(c[0])},${clampByte(c[1])},${clampByte(c[2])},0.5)`;
-        const size = Math.random() > 0.72 ? 2 : 1;
+        const size = R() > 0.72 ? 2 : 1;
         g.fillRect(x, y, size, size);
         if (x < size) g.fillRect(x + cw, y, size, size);
         if (y < size) g.fillRect(x, y + ch, size, size);
@@ -208,11 +245,11 @@ function asphaltMap(theme: TrackTheme): THREE.CanvasTexture {
 
       // Scattered soft irregularities keep it from reading as flat plastic.
       for (let i = 0; i < 30; i++) {
-        const cx = Math.random() * cw;
-        const cy = Math.random() * ch;
-        const r = 26 + Math.random() * 70;
-        const lift = Math.random() > 0.5;
-        const a = 0.05 + Math.random() * 0.06;
+        const cx = R() * cw;
+        const cy = R() * ch;
+        const r = 26 + R() * 70;
+        const lift = R() > 0.5;
+        const a = 0.05 + R() * 0.06;
         const c = lift
           ? [base[0] + 12, base[1] + 11, base[2] + 10]
           : [base[0] - 12, base[1] - 12, base[2] - 11];
@@ -251,17 +288,17 @@ function asphaltMap(theme: TrackTheme): THREE.CanvasTexture {
       g.fillStyle = `rgba(${base[0]},${base[1]},${base[2]},0.55)`;
       for (const line of lines) {
         for (let i = 0; i < 150; i++) {
-          const y = Math.floor(Math.random() * ch);
-          const x = line.x + (Math.random() - 0.5) * lineW * 1.7;
-          g.fillRect(x, y, 1 + Math.floor(Math.random() * 2), 1 + Math.floor(Math.random() * 3));
+          const y = Math.floor(R() * ch);
+          const x = line.x + (R() - 0.5) * lineW * 1.7;
+          g.fillRect(x, y, 1 + Math.floor(R() * 2), 1 + Math.floor(R() * 3));
         }
       }
       // Fine wear speckle across the whole surface.
       for (let i = 0; i < 900; i++) {
-        const x = Math.floor(Math.random() * cw);
-        const y = Math.floor(Math.random() * ch);
-        const delta = 14 + Math.random() * 26;
-        const up = Math.random() > 0.45;
+        const x = Math.floor(R() * cw);
+        const y = Math.floor(R() * ch);
+        const delta = 14 + R() * 26;
+        const up = R() > 0.45;
         const c = up
           ? [base[0] + delta, base[1] + delta, base[2] + delta]
           : [base[0] - delta, base[1] - delta, base[2] - delta];
@@ -298,10 +335,10 @@ function asphaltRoughness(): THREE.CanvasTexture {
       g.putImageData(img, 0, 0);
       // Smoother patches: rubbered-in and polished areas.
       for (let i = 0; i < 26; i++) {
-        const cx = Math.random() * cw;
-        const cy = Math.random() * ch;
-        const r = 20 + Math.random() * 54;
-        const v = 130 + Math.floor(Math.random() * 45);
+        const cx = R() * cw;
+        const cy = R() * ch;
+        const r = 20 + R() * 54;
+        const v = 130 + Math.floor(R() * 45);
         for (const dx of [-cw, 0, cw]) {
           for (const dy of [-ch, 0, ch]) {
             const grad = g.createRadialGradient(cx + dx, cy + dy, 0, cx + dx, cy + dy, r);
@@ -313,10 +350,10 @@ function asphaltRoughness(): THREE.CanvasTexture {
         }
       }
       for (let i = 0; i < 1600; i++) {
-        const v = clampByte(210 + (Math.random() - 0.5) * 70);
+        const v = clampByte(210 + (R() - 0.5) * 70);
         g.fillStyle = `rgb(${v},${v},${v})`;
-        const x = Math.floor(Math.random() * cw);
-        const y = Math.floor(Math.random() * ch);
+        const x = Math.floor(R() * cw);
+        const y = Math.floor(R() * ch);
         g.fillRect(x, y, 2, 2);
         if (x < 2) g.fillRect(x + cw, y, 2, 2);
         if (y < 2) g.fillRect(x, y + ch, 2, 2);
@@ -349,7 +386,7 @@ function curbTexture(
       }
       g.fillStyle = "rgba(10,12,14,0.14)";
       for (let i = 0; i < 160; i++) {
-        g.fillRect(Math.floor(Math.random() * w), Math.floor(Math.random() * h), 2, 2);
+        g.fillRect(Math.floor(R() * w), Math.floor(R() * h), 2, 2);
       }
     },
     64,
@@ -366,9 +403,9 @@ function barrierTexture(): THREE.CanvasTexture {
       g.fillStyle = "#8d98a2";
       g.fillRect(0, h * 0.62, w, h * 0.38);
       for (let i = 0; i < 40; i++) {
-        const v = 90 + Math.random() * 40;
+        const v = 90 + R() * 40;
         g.fillStyle = `rgba(${v},${v},${v},0.25)`;
-        g.fillRect(Math.random() * w, Math.random() * h, 2, 3);
+        g.fillRect(R() * w, R() * h, 2, 3);
       }
       g.fillStyle = "rgba(16,18,22,0.45)";
       g.fillRect(0, h - 5, w, 5);
@@ -423,11 +460,11 @@ function brakePatchTexture(): THREE.CanvasTexture {
       g.fillRect(0, 0, cw, ch);
       g.globalCompositeOperation = "source-atop";
       for (let i = 0; i < 60; i++) {
-        const x = Math.random() * cw;
-        const y = Math.random() * ch;
-        const v = Math.random() > 0.5 ? 32 : 6;
+        const x = R() * cw;
+        const y = R() * ch;
+        const v = R() > 0.5 ? 32 : 6;
         g.fillStyle = `rgba(${v},${v},${v},0.16)`;
-        g.fillRect(x, y, 2 + Math.floor(Math.random() * 4), 1 + Math.floor(Math.random() * 3));
+        g.fillRect(x, y, 2 + Math.floor(R() * 4), 1 + Math.floor(R() * 3));
       }
       g.globalCompositeOperation = "source-over";
     },
@@ -468,8 +505,8 @@ function station(
 }
 
 /**
- * Two-vertex strip. Same index pattern as the scene it replaces; visibility is
- * guaranteed by DoubleSide materials instead of per-side winding.
+ * Two-vertex strip. Surface builders orient the indices for their visible face
+ * and then recalculate normals before the geometry reaches a material.
  */
 function ribbon(stations: Station[], closed: boolean): THREE.BufferGeometry {
   const n = stations.length;
@@ -500,6 +537,30 @@ function ribbon(stations: Station[], closed: boolean): THREE.BufferGeometry {
   geo.setIndex(indices);
   geo.computeVertexNormals();
   return geo;
+}
+
+const FACE_UP = new THREE.Vector3(0, 1, 0);
+const FACE_DOWN = new THREE.Vector3(0, -1, 0);
+const FACE_SIDE = new THREE.Vector3();
+
+/** Recompute normals so the strip faces `dir`, then keep that winding. */
+function face(geo: THREE.BufferGeometry, dir: THREE.Vector3): THREE.BufferGeometry {
+  faceToward(geo, dir);
+  return geo;
+}
+
+function faceUp(geo: THREE.BufferGeometry): THREE.BufferGeometry {
+  return face(geo, FACE_UP);
+}
+
+function faceDown(geo: THREE.BufferGeometry): THREE.BufferGeometry {
+  return face(geo, FACE_DOWN);
+}
+
+/** `sign` +1 faces the track's right vector (outside the right barrier). */
+function faceSign(geo: THREE.BufferGeometry, sign: number, s: Sample): THREE.BufferGeometry {
+  FACE_SIDE.set(s.rx * sign, 0, s.rz * sign);
+  return face(geo, FACE_SIDE);
 }
 
 /**
@@ -561,49 +622,11 @@ function loopStations(
 }
 
 /**
- * Kerb presence: curvature feeds a smooth ramp so each kerb tapers in and out
- * over several metres, and runs shorter than KERB_MIN_ARC are dropped so a
- * quick wiggle can never degenerate into dashes. Straights stay bare, and both
- * the inside and the outside of a corner get kerbs.
+ * Kerb runs come from kerb.ts — the same filter the simulator uses — so a stud
+ * cannot sit on a run the car will never ride, or miss one it will.
  */
 function kerbWeights(samples: Sample[]): { weights: Float32Array; runs: number[][] } {
-  const n = samples.length;
-  const weights = new Float32Array(n);
-  for (let i = 0; i < n; i++) weights[i] = kerbWeightOf(samples[i]!.curv);
-  let start = 0;
-  while (start < n && weights[start] > 0) start++;
-  const runs: number[][] = [];
-  let current: number[] = [];
-  let arc = 0;
-  const flush = () => {
-    if (current.length >= 2 && arc >= KERB_MIN_ARC) runs.push(current);
-    current = [];
-    arc = 0;
-  };
-  for (let k = 0; k < n; k++) {
-    const i = (start + k) % n;
-    if (weights[i]! > 0) {
-      current.push(i);
-      arc += samples[i]!.segLen;
-    } else {
-      flush();
-    }
-  }
-  flush();
-  return { weights, runs };
-}
-
-/** Height of the kerb top face where the edge studs sit (0 where there is no kerb). */
-function kerbTopAtRun(weights: Float32Array, runs: number[][]): Float32Array {
-  const tops = new Float32Array(weights.length);
-  const t = KERB_W * 0.5;
-  for (const run of runs) {
-    for (const i of run) {
-      // Height at the stud position (middle of the kerb band).
-      tops[i] = kerbSurfaceAt(t, KERB_W * 0.5, weights[i]!);
-    }
-  }
-  return tops;
+  return { weights: kerbWeightProfile(samples), runs: kerbRunIndices(samples) };
 }
 
 /** Guardrail post with a foot plate; origin at the walkway so scale.y sets height. */
@@ -723,6 +746,9 @@ function brakingSpots(track: Track): Sample[] {
 }
 
 export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces {
+  // One seed per theme, so reloading or switching away and back rebuilds the
+  // same asphalt, kerb paint and rubber line instead of a new random field.
+  return withRoadSeed(roadTextureSeed(theme.kind, theme.citySeed), () => {
   const group = new THREE.Group();
   group.name = "road-surfaces";
   const samples = track.samples;
@@ -756,7 +782,7 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
       metalness: 0.02,
       emissive: theme.roadEmissive,
       emissiveIntensity: theme.roadGlow,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
     }),
   );
   const shellMat = own(
@@ -769,7 +795,7 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
       metalness: 0.02,
       emissive: theme.roadEmissive,
       emissiveIntensity: theme.roadGlow,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
     }),
   );
 
@@ -793,7 +819,7 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
       metalness: 0.04,
       emissive: theme.curbEmissive,
       emissiveIntensity: Math.min(0.04, theme.curbGlow),
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
     }),
   );
 
@@ -811,9 +837,13 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
       map: barrier,
       roughness: 0.88,
       metalness: 0.08,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
     }),
   );
+  // The outer barrier is the one surface seen from both the racing line (through
+  // the wall slot) and from outside the circuit. One winding cannot face both.
+  const wallMatOuter = own(mats, wallMat.clone());
+  wallMatOuter.side = THREE.DoubleSide;
   const capMats = [theme.barrierL, theme.barrierR].map((capColor) =>
     own(
       mats,
@@ -823,7 +853,7 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
         emissiveIntensity: 0.16,
         metalness: 0.55,
         roughness: 0.32,
-        side: THREE.DoubleSide,
+        side: THREE.FrontSide,
       }),
     ),
   );
@@ -836,7 +866,7 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
         emissiveIntensity: 0.32,
         roughness: 0.42,
         metalness: 0.2,
-        side: THREE.DoubleSide,
+        side: THREE.FrontSide,
       }),
     ),
   );
@@ -846,7 +876,7 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
       color: 0x8d98a4,
       metalness: 0.72,
       roughness: 0.34,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
     }),
   );
   const walkMat = own(
@@ -855,7 +885,7 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
       color: kind === "coast" ? 2763840 : kind === "yard" ? 2894376 : 2369584,
       roughness: 0.94,
       metalness: 0.02,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
     }),
   );
   const lineMat = own(
@@ -868,7 +898,7 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
       vertexColors: true,
       roughness: 0.62,
       metalness: 0.06,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
       polygonOffset: true,
       polygonOffsetFactor: -3,
       polygonOffsetUnits: -3,
@@ -883,7 +913,7 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
       depthWrite: false,
       roughness: 0.66,
       metalness: 0.04,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
       polygonOffset: true,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2,
@@ -896,7 +926,7 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
       color: gridPaint(theme),
       roughness: 0.55,
       metalness: 0.05,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
       polygonOffset: true,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2,
@@ -906,46 +936,45 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
   // ---- deck, slab and skirts ---------------------------------------------
   const deckGeo = own(
     geos,
-    ribbon(
+    faceUp(ribbon(
       loopStations(samples, track.length, ROAD_TILE, (s) => {
         const h = halfOf(s) + EDGE_PAD;
         return { a: at(s, -h, s.y + SURFACE), b: at(s, h, s.y + SURFACE) };
       }),
       false,
-    ),
+    )),
   );
   group.add(new THREE.Mesh(deckGeo, roadMat));
 
   const shellGeo = own(
     geos,
-    ribbon(
+    faceDown(ribbon(
       loopStations(samples, track.length, ROAD_TILE, (s) => {
         const h = halfOf(s) + EDGE_PAD;
         const y = s.y + SURFACE - DECK;
         return { a: at(s, -h, y), b: at(s, h, y) };
       }),
       false,
-    ),
+    )),
   );
   group.add(new THREE.Mesh(shellGeo, shellMat));
 
   for (const sign of [-1, 1]) {
     const skirtGeo = own(
       geos,
-      ribbon(
+      faceSign(ribbon(
         loopStations(samples, track.length, ROAD_TILE, (s) => {
           const lat = sign * (halfOf(s) + EDGE_PAD);
           return { a: at(s, lat, s.y + SURFACE), b: at(s, lat, s.y + SURFACE - DECK) };
         }),
         false,
-      ),
+      ), sign, samples[0]!),
     );
     group.add(new THREE.Mesh(skirtGeo, shellMat));
   }
 
   // ---- kerbs: only where the track actually turns -------------------------
   const { weights, runs } = kerbWeights(samples);
-  const kerbTop = kerbTopAtRun(weights, runs);
   // [side][face] -> one strip per corner run: face 0 is the vertical front,
   // face 1 the sloped top. Runs of a side/face merge into a single geometry, so
   // the lap costs four kerb meshes, not one per corner segment.
@@ -953,6 +982,7 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
     [[], []],
     [[], []],
   ];
+  const kerbRunStarts: Sample[][] = [[], []];
   for (const run of runs) {
     const runStrips: Station[][][] = [
       [[], []],
@@ -983,13 +1013,21 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
     for (let side = 0; side < 2; side++) {
       kerbStrips[side][0].push(runStrips[side][0]);
       kerbStrips[side][1].push(runStrips[side][1]);
+      kerbRunStarts[side]!.push(samples[run[0]!]!);
     }
   }
-  for (const side of kerbStrips) {
-    for (const strips of side) {
-      if (strips.length > 0) {
-        group.add(new THREE.Mesh(own(geos, multiRibbon(strips)), kerbMat));
-      }
+  for (let side = 0; side < kerbStrips.length; side++) {
+    const sign = side === 0 ? -1 : 1;
+    const faces = kerbStrips[side]!;
+    for (let faceI = 0; faceI < faces.length; faceI++) {
+      const strips = faces[faceI]!;
+      if (strips.length === 0) continue;
+      const geo = own(geos, multiRibbon(strips));
+      // Face 0 is the inner vertical front, seen from the racing line.
+      // Face 1 is the sloped top.
+      if (faceI === 0) faceSign(geo, -sign, kerbRunStarts[side]![0] ?? samples[0]!);
+      else faceUp(geo);
+      group.add(new THREE.Mesh(geo, kerbMat));
     }
   }
 
@@ -1007,29 +1045,35 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
           false,
         ),
       );
-      group.add(new THREE.Mesh(wallGeo, wallMat));
+      // Inner wall faces the road. Outer wall faces away; its material stays
+      // DoubleSide because the slot between the two walls is visible from the
+      // racing line and the outside face is visible past the circuit.
+      if (extra === WALL_IN) faceSign(wallGeo, -sign, samples[0]!);
+      else faceSign(wallGeo, sign, samples[0]!);
+      const mat = extra === WALL_OUT ? wallMatOuter : wallMat;
+      group.add(new THREE.Mesh(wallGeo, mat));
     }
     const topGeo = own(
       geos,
-      ribbon(
+      faceUp(ribbon(
         loopStations(samples, track.length, WALL_TILE, (s) => ({
           a: at(s, sign * (halfOf(s) + WALL_IN), s.y + WALL_H),
           b: at(s, sign * (halfOf(s) + WALL_OUT), s.y + WALL_H + 0.02),
         })),
         false,
-      ),
+      )),
     );
     group.add(new THREE.Mesh(topGeo, wallMat));
 
     const capGeo = own(
       geos,
-      ribbon(
+      faceUp(ribbon(
         loopStations(samples, track.length, WALL_TILE, (s) => ({
           a: at(s, sign * (halfOf(s) + WALL_IN), s.y + WALL_H),
           b: at(s, sign * (halfOf(s) + CAP_OUT), s.y + WALL_H + 0.1),
         })),
         false,
-      ),
+      )),
     );
     group.add(new THREE.Mesh(capGeo, capMats[side]));
 
@@ -1038,38 +1082,38 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
     // visible on both sides of every circuit.
     const accentGeo = own(
       geos,
-      ribbon(
+      faceSign(ribbon(
         loopStations(samples, track.length, WALL_TILE, (s) => {
           const lat = sign * (halfOf(s) + WALL_IN - 0.006);
           return { a: at(s, lat, s.y + 0.28), b: at(s, lat, s.y + 0.38) };
         }),
         false,
-      ),
+      ), -sign, samples[0]!),
     );
     group.add(new THREE.Mesh(accentGeo, accentMats[side]));
 
     const walkGeo = own(
       geos,
-      ribbon(
+      faceUp(ribbon(
         loopStations(samples, track.length, 1, (s) => ({
           a: at(s, sign * (halfOf(s) + WALK_IN), s.y + WALK_Y),
           b: at(s, sign * (halfOf(s) + WALK_OUT), s.y + WALK_Y),
         })),
         false,
-      ),
+      )),
     );
     group.add(new THREE.Mesh(walkGeo, walkMat));
 
     for (const lift of [0, RAIL_LIFT]) {
       const railGeo = own(
         geos,
-        ribbon(
+        faceSign(ribbon(
           loopStations(samples, track.length, 1, (s) => ({
             a: at(s, sign * (halfOf(s) + RAIL_INNER), s.y + RAIL_Y + lift),
             b: at(s, sign * (halfOf(s) + RAIL_INNER + RAIL_SPAN), s.y + RAIL_Y + RAIL_H + lift),
           })),
           false,
-        ),
+        ), -sign, samples[0]!),
       );
       group.add(new THREE.Mesh(railGeo, railMat));
     }
@@ -1100,16 +1144,27 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
   posts.frustumCulled = false;
   group.add(posts);
 
-  // ---- reflective edge studs, riding the kerb top when a kerb is present ---
+  // ---- reflective edge studs, on the kerb centreline (asphalt when weight is 0)
   const studMatrices: THREE.Matrix4[] = [];
   const studColors: THREE.Color[] = [];
+  const studLift = new THREE.Vector3();
+  const studRot = new THREE.Matrix4();
   for (let i = 0; i < n; i += STUD_EVERY) {
-    const s = samples[i];
-    const y = s.y + SURFACE + kerbTop[i] + 0.02;
+    const s = samples[i]!;
+    const half = halfOf(s);
+    const weight = weights[i] ?? 0;
+    const slope = kerbCrossSlope(weight);
     for (const sign of [-1, 1]) {
-      const lat = sign * (halfOf(s) - KERB_W * 0.5);
-      dummy.position.set(s.x + s.rx * lat, y, s.z + s.rz * lat);
-      dummy.rotation.set(0, Math.atan2(s.tx, s.tz), 0);
+      const lat = sign * kerbStudLat(half);
+      // trackBasis +X is left. A right-hand kerb rises toward +right, so the
+      // stud rolls the other way; the left kerb is the mirror. Bottom face
+      // then lies on the surface instead of hovering in world-up.
+      const basis = trackBasis(s).multiply(new THREE.Matrix4().makeRotationZ(sign > 0 ? -slope : slope));
+      studRot.extractRotation(basis);
+      studLift.set(0, STUD_H * 0.5, 0).applyMatrix4(studRot);
+      dummy.position.set(s.x + s.rx * lat, s.y + SURFACE + kerbStudSurface(half, weight), s.z + s.rz * lat);
+      dummy.position.add(studLift);
+      dummy.quaternion.setFromRotationMatrix(basis);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       studMatrices.push(dummy.matrix.clone());
@@ -1117,7 +1172,7 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
     }
   }
   const studs = new THREE.InstancedMesh(
-    own(geos, new THREE.BoxGeometry(0.18, 0.07, 0.42)),
+    own(geos, new THREE.BoxGeometry(0.18, STUD_H, 0.42)),
     studMat,
     studMatrices.length,
   );
@@ -1134,7 +1189,7 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
     return { a: at(s, s.line - h, y), b: at(s, s.line + h, y) };
   };
   const lineStations = loopStations(samples, track.length, LINE_TILE, linePlace);
-  const lineGeo = own(geos, ribbon(lineStations, false));
+  const lineGeo = own(geos, faceUp(ribbon(lineStations, false)));
   const lineColors = new Float32Array(lineStations.length * 4);
   for (let i = 0; i < lineStations.length; i++) {
     const strength = lineStrength(samples, track.referenceSpeed, i % n);
@@ -1174,7 +1229,7 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
       boxes.push({ m, w: 2.6, l: 5, t: 0.14 });
     }
   }
-  group.add(new THREE.Mesh(own(geos, gridBoxGeometry(boxes)), gridMat));
+  group.add(new THREE.Mesh(own(geos, faceUp(gridBoxGeometry(boxes))), gridMat));
 
   return {
     group,
@@ -1187,4 +1242,5 @@ export function buildRoadSurfaces(track: Track, theme: TrackTheme): RoadSurfaces
       texs.length = 0;
     },
   };
+  });
 }

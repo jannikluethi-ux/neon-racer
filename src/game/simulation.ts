@@ -144,6 +144,10 @@ function blankCar(id: string, name: string, color: number, isPlayer: boolean, ai
     wheelSpin: 0,
     kerbL: 0,
     kerbR: 0,
+    gradePitch: 0,
+    gradeRoll: 0,
+    wheelKerb: [0, 0, 0, 0],
+    wheelNormals: [[0, 1, 0], [0, 1, 0], [0, 1, 0], [0, 1, 0]],
     respawnArc: 0,
     prevX: 0,
     prevZ: 0,
@@ -264,6 +268,10 @@ export function placeGrid(sim: Sim): void {
     car.crashPulse = 0;
     car.kerbL = 0;
     car.kerbR = 0;
+    car.gradePitch = 0;
+    car.gradeRoll = 0;
+    car.wheelKerb = [0, 0, 0, 0];
+    car.wheelNormals = [[0, 1, 0], [0, 1, 0], [0, 1, 0], [0, 1, 0]];
     car.steerVisual = 0;
     car.throttleVisual = 0;
     car.brakeVisual = 0;

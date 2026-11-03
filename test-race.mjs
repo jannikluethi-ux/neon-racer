@@ -1,4 +1,11 @@
 import { chromium } from "playwright";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { checkedOutputPath, outputRoots, repoRoot } from "./scripts/browser-guard.mjs";
+
+const screenshotDir = join(repoRoot(), "screenshots");
+mkdirSync(screenshotDir, { recursive: true });
+const screenshotPath = (name) => checkedOutputPath(join(screenshotDir, name), outputRoots());
 
 const browser = await chromium.launch({ headless: false, args: ["--no-sandbox"] });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
@@ -24,12 +31,12 @@ await page.waitForTimeout(2000);
 await page.click("button:has-text('Start race')");
 await page.waitForTimeout(6000); // Wait for countdown and race start
 
-await page.screenshot({ path: "/Users/janniksmacbookair/Library/Mobile Documents/com~apple~CloudDocs/Projects/Builder Apps/Neon Racer/screenshots/race-early.png" });
+await page.screenshot({ path: screenshotPath("race-early.png") });
 
 // Drive for a bit
 await page.keyboard.down("KeyW"); // Gas
 await page.waitForTimeout(3000);
-await page.screenshot({ path: "/Users/janniksmacbookair/Library/Mobile Documents/com~apple~CloudDocs/Projects/Builder Apps/Neon Racer/screenshots/race-driving.png" });
+await page.screenshot({ path: screenshotPath("race-driving.png") });
 
 // Test steering
 await page.keyboard.down("KeyA");
@@ -42,7 +49,7 @@ await page.waitForTimeout(1500);
 await page.keyboard.up("KeyD");
 await page.waitForTimeout(1000);
 
-await page.screenshot({ path: "/Users/janniksmacbookair/Library/Mobile Documents/com~apple~CloudDocs/Projects/Builder Apps/Neon Racer/screenshots/race-steering.png" });
+await page.screenshot({ path: screenshotPath("race-steering.png") });
 
 // Test nitro
 await page.keyboard.down("Space");
@@ -50,7 +57,7 @@ await page.waitForTimeout(1000);
 await page.keyboard.up("Space");
 await page.waitForTimeout(1000);
 
-await page.screenshot({ path: "/Users/janniksmacbookair/Library/Mobile Documents/com~apple~CloudDocs/Projects/Builder Apps/Neon Racer/screenshots/race-nitro.png" });
+await page.screenshot({ path: screenshotPath("race-nitro.png") });
 
 // Release gas, test brake
 await page.keyboard.up("KeyW");
@@ -58,12 +65,12 @@ await page.keyboard.down("KeyS");
 await page.waitForTimeout(1000);
 await page.keyboard.up("KeyS");
 
-await page.screenshot({ path: "/Users/janniksmacbookair/Library/Mobile Documents/com~apple~CloudDocs/Projects/Builder Apps/Neon Racer/screenshots/race-brake.png" });
+await page.screenshot({ path: screenshotPath("race-brake.png") });
 
 // Complete a lap - keep driving
 await page.keyboard.down("KeyW");
 await page.waitForTimeout(15000);
-await page.screenshot({ path: "/Users/janniksmacbookair/Library/Mobile Documents/com~apple~CloudDocs/Projects/Builder Apps/Neon Racer/screenshots/race-lap.png" });
+await page.screenshot({ path: screenshotPath("race-lap.png") });
 await page.keyboard.up("KeyW");
 
 console.log("Console errors:", errors);

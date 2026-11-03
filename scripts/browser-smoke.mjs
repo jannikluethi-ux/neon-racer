@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { chromium } from "playwright";
-import { checkedOutputPath, checkedUrl } from "./browser-guard.mjs";
+import { checkedOutputPath, checkedUrl, outputRoots } from "./browser-guard.mjs";
 import { computeBrandWarnings } from "./brand-check.mjs";
 import {
   authInvariantWarnings,
@@ -26,11 +26,12 @@ if (args.error) {
   process.exit(1);
 }
 
+const roots = outputRoots();
 const url = checkedUrl(args.url);
-const outPng = checkedOutputPath(args.outPng, ["/workspace"]);
+const outPng = checkedOutputPath(args.outPng, roots);
 const derived = derivedPaths(outPng);
-const mobilePng = checkedOutputPath(derived.mobilePng, ["/workspace"]);
-const outJson = checkedOutputPath(derived.verdictJson, ["/workspace"], "verdict JSON");
+const mobilePng = checkedOutputPath(derived.mobilePng, roots);
+const outJson = checkedOutputPath(derived.verdictJson, roots, "verdict JSON");
 
 const MAX_BASELINE_BYTES = 1024 * 1024;
 const baselineRequested = Boolean(args.baseline);
@@ -38,7 +39,7 @@ let baselinePath = null;
 let baselineResolveError = null;
 if (baselineRequested) {
   try {
-    baselinePath = checkedOutputPath(realpathSync(args.baseline), ["/workspace"], "baseline");
+    baselinePath = checkedOutputPath(realpathSync(args.baseline), roots, "baseline");
   } catch (err) {
     baselineResolveError = err?.code ?? "unresolvable path";
   }

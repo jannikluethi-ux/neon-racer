@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { WHEEL_CONTACT_Y } from "./contact";
 
 /**
  * Authored vehicle geometry.
@@ -135,10 +136,8 @@ type CarSpec = {
   tireFront: TireSpec;
   tireRear: TireSpec;
   rim: RimStyle;
-  wheelbase: number;
 };
 
-const CONTACT = 0.032;
 const RING_COUNT = 52;
 const PROFILE_LOW = 10;
 const PROFILE_UP = 9;
@@ -208,7 +207,7 @@ type Ring = {
 
 /** Arch ceiling height: tire top plus clearance for suspension travel. */
 function archTop(spec: CarSpec): number {
-  return CONTACT + spec.tireFront.r * 2 + spec.archClear;
+  return WHEEL_CONTACT_Y + spec.tireFront.r * 2 + spec.archClear;
 }
 
 /** Sides tuck in below the belt line, then flare out to the widest point. */
@@ -658,9 +657,17 @@ function caliperGeometry(style: RimStyle): THREE.BufferGeometry {
 // ---------------------------------------------------------------------------
 
 /**
- * Each car is authored as its own station table. Dimensions are real: wheel
- * bases between 2.4 and 2.95 m, body widths 1.85 to 2.24 m, floors around
- * 0.14 m above the asphalt so the cars sit on the road instead of hovering.
+ * Each car is authored as its own station table. Wheelbase is the distance
+ * between the axle stations, not a separate scale. Body width is twice the
+ * widest station half-width. Floor height is above the tire-contact origin;
+ * the asphalt deck sits 0.03 m above that origin, so floor-to-tarmac clearance
+ * is floor − 0.03 m (about 0.11–0.12 m), not the floor number itself.
+ *
+ * Measured from these stations:
+ *   VECTOR  wheelbase 2.50 m, width 2.14 m, floor 0.145 m
+ *   VANTA   wheelbase 2.38 m, width 2.24 m, floor 0.150 m
+ *   SURGE   wheelbase 2.82 m, width 2.20 m, floor 0.140 m
+ *   AEGIS   wheelbase 2.52 m, width 2.36 m, floor 0.150 m
  */
 const SPECS: Record<CarId, CarSpec> = {
   // Balanced GT3 coupe — long bonnet, cabin set back, full-width tail.
@@ -671,7 +678,6 @@ const SPECS: Record<CarId, CarSpec> = {
     archHalf: 0.62,
     archClear: 0.075,
     floor: 0.145,
-    wheelbase: 2.5,
     tireFront: { r: 0.345, half: 0.13, rimR: 0.245, grooves: 3 },
     tireRear: { r: 0.345, half: 0.15, rimR: 0.245, grooves: 3 },
     rim: { spokes: 7, spokeW: 0.052, spokeT: 0.036, face: 0xdde5ec, barrel: 0xc3ccd4, discR: 0.2, caliper: 0x2ee6ff, lipSteps: 2 },
@@ -707,7 +713,6 @@ const SPECS: Record<CarId, CarSpec> = {
     archHalf: 0.56,
     archClear: 0.07,
     floor: 0.15,
-    wheelbase: 2.38,
     tireFront: { r: 0.335, half: 0.125, rimR: 0.238, grooves: 2 },
     tireRear: { r: 0.335, half: 0.155, rimR: 0.238, grooves: 2 },
     rim: { spokes: 5, spokeW: 0.09, spokeT: 0.05, face: 0x9aa4ae, barrel: 0x8f99a3, discR: 0.192, caliper: 0xff4d24, lipSteps: 2 },
@@ -743,7 +748,6 @@ const SPECS: Record<CarId, CarSpec> = {
     archHalf: 0.66,
     archClear: 0.07,
     floor: 0.14,
-    wheelbase: 2.82,
     tireFront: { r: 0.34, half: 0.12, rimR: 0.242, grooves: 3 },
     tireRear: { r: 0.34, half: 0.16, rimR: 0.242, grooves: 3 },
     rim: { spokes: 10, spokeW: 0.03, spokeT: 0.024, face: 0xe8eef4, barrel: 0xb9c2ca, discR: 0.205, caliper: 0xffe14a, lipSteps: 3 },
@@ -779,7 +783,6 @@ const SPECS: Record<CarId, CarSpec> = {
     archHalf: 0.6,
     archClear: 0.08,
     floor: 0.15,
-    wheelbase: 2.52,
     tireFront: { r: 0.35, half: 0.15, rimR: 0.25, grooves: 4 },
     tireRear: { r: 0.35, half: 0.15, rimR: 0.25, grooves: 4 },
     rim: { spokes: 6, spokeW: 0.07, spokeT: 0.045, face: 0xc8a06a, barrel: 0xb08c58, discR: 0.215, caliper: 0x9fd4ff, lipSteps: 2 },
@@ -810,6 +813,45 @@ const SPECS: Record<CarId, CarSpec> = {
 
 export function carSpec(id: string): CarSpec {
   return SPECS[id as CarId] ?? SPECS.vector;
+}
+
+/**
+ * Where the tires actually sit. Shared by the mesh builder and the kerb
+ * sampler so a wheel cannot "touch" a kerb the model has not reached.
+ * `frontX` / `rearX` are positive half-tracks (driver's left is +X).
+ */
+export type WheelLayout = {
+  frontX: number;
+  rearX: number;
+  frontZ: number;
+  rearZ: number;
+  frontRadius: number;
+  rearRadius: number;
+  /** Widest body half-width (m). Full width is twice this. */
+  halfWidth: number;
+  /** Axle-to-axle distance (m). */
+  wheelbase: number;
+  /** Floor above the tire-contact origin (m). */
+  floorY: number;
+};
+
+export function wheelLayout(vehicleId: string): WheelLayout {
+  const spec = carSpec(vehicleId);
+  const frontW = stationAt(spec, spec.frontAxleZ, "w");
+  const rearW = stationAt(spec, spec.rearAxleZ, "w");
+  let halfWidth = 0;
+  for (const key of spec.keys) if (key.w > halfWidth) halfWidth = key.w;
+  return {
+    frontX: frontW - 0.03 - spec.tireFront.half,
+    rearX: rearW - 0.03 - spec.tireRear.half,
+    frontZ: spec.frontAxleZ,
+    rearZ: spec.rearAxleZ,
+    frontRadius: spec.tireFront.r,
+    rearRadius: spec.tireRear.r,
+    halfWidth,
+    wheelbase: spec.frontAxleZ - spec.rearAxleZ,
+    floorY: spec.floor,
+  };
 }
 
 export function isCarId(id: string): id is CarId {
@@ -1107,11 +1149,12 @@ export function buildCarGeometry(vehicleId: string): CarGeometry {
   if (carbon) boxUV(carbon, 14);
 
   const wheels: WheelBuild[] = [];
+  const layout = wheelLayout(spec.id);
   const spots: Array<{ x: number; z: number; steered: boolean; tire: TireSpec }> = [
-    { x: dims.frontW - 0.03 - spec.tireFront.half, z: spec.frontAxleZ, steered: true, tire: spec.tireFront },
-    { x: -(dims.frontW - 0.03 - spec.tireFront.half), z: spec.frontAxleZ, steered: true, tire: spec.tireFront },
-    { x: dims.rearW - 0.03 - spec.tireRear.half, z: spec.rearAxleZ, steered: false, tire: spec.tireRear },
-    { x: -(dims.rearW - 0.03 - spec.tireRear.half), z: spec.rearAxleZ, steered: false, tire: spec.tireRear },
+    { x: layout.frontX, z: layout.frontZ, steered: true, tire: spec.tireFront },
+    { x: -layout.frontX, z: layout.frontZ, steered: true, tire: spec.tireFront },
+    { x: layout.rearX, z: layout.rearZ, steered: false, tire: spec.tireRear },
+    { x: -layout.rearX, z: layout.rearZ, steered: false, tire: spec.tireRear },
   ];
   const built = new Map<string, { tire: THREE.BufferGeometry; rims: [THREE.BufferGeometry, THREE.BufferGeometry]; disc: THREE.BufferGeometry; caliper: THREE.BufferGeometry }>();
   for (const spot of spots) {
@@ -1128,7 +1171,7 @@ export function buildCarGeometry(vehicleId: string): CarGeometry {
     }
     wheels.push({
       x: spot.x,
-      y: CONTACT + spot.tire.r,
+      y: WHEEL_CONTACT_Y + spot.tire.r,
       z: spot.z,
       steered: spot.steered,
       radius: spot.tire.r,
@@ -1151,5 +1194,4 @@ export function topYAt(vehicleId: string, z: number): number {
   return stationAt(carSpec(vehicleId), z, "y");
 }
 
-/** Contact-patch decals live in root space, just above the asphalt. */
-export const WHEEL_CONTACT_Y = CONTACT;
+export { WHEEL_CONTACT_Y };

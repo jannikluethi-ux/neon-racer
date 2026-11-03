@@ -5,6 +5,7 @@ import { sampleAt } from "./track";
 import { themeFor, type TrackTheme } from "./track-def";
 import { buildRoadSurfaces, type RoadSurfaces } from "./road-surface";
 import { bodyWidthAt, buildCarGeometry, type CarDims, type CarRole } from "./car-model";
+import { DECAL_CLEARANCE } from "./contact";
 import { vehicleById } from "./vehicle-def";
 
 /** One wheel: steer pivot, spinning hub and the contact patch decal under it. */
@@ -82,6 +83,38 @@ export type CarPaint = {
 
 function clamp(v: number, a: number, b: number): number {
   return Math.max(a, Math.min(b, v));
+}
+
+const decalWheelCenter = new THREE.Vector3();
+const decalRoadNormal = new THREE.Vector3();
+const decalCircleNormal = new THREE.Vector3(0, 0, 1);
+const decalRootQuaternion = new THREE.Quaternion();
+const decalWorldQuaternion = new THREE.Quaternion();
+const decalLocalQuaternion = new THREE.Quaternion();
+
+/** Place one contact mark below that wheel's current world-space contact point. */
+export function syncWheelContactDecal(
+  root: THREE.Object3D,
+  wheel: THREE.Object3D,
+  decal: THREE.Object3D,
+  radius: number,
+  roadNormal?: readonly [number, number, number],
+): void {
+  wheel.getWorldPosition(decalWheelCenter);
+  root.getWorldQuaternion(decalRootQuaternion);
+  if (roadNormal) decalRoadNormal.fromArray(roadNormal);
+  else decalRoadNormal.set(0, 1, 0).applyQuaternion(decalRootQuaternion);
+  if (decalRoadNormal.lengthSq() < 1e-8) decalRoadNormal.set(0, 1, 0).applyQuaternion(decalRootQuaternion);
+  decalRoadNormal.normalize();
+
+  // The center was read from the actual wheel pivot, including suspension and
+  // its own road-height residual. Offset along the local road normal so the
+  // decal stays just above the asphalt on both gradients and kerb cross-slopes.
+  decalWheelCenter.addScaledVector(decalRoadNormal, -radius + DECAL_CLEARANCE);
+  decal.position.copy(root.worldToLocal(decalWheelCenter));
+  decalWorldQuaternion.setFromUnitVectors(decalCircleNormal, decalRoadNormal);
+  decalLocalQuaternion.copy(decalRootQuaternion).invert().multiply(decalWorldQuaternion);
+  decal.quaternion.copy(decalLocalQuaternion);
 }
 
 /** Shared primitives reused by every car's trim, decals and effects. */
@@ -406,8 +439,7 @@ export function createCarView(color: number, vehicleId: string, rival = false): 
     root.add(pivot);
     // Contact patch decal: stays flat on the road under this wheel.
     const blob = new THREE.Mesh(geos.contact, blobMat);
-    blob.rotation.x = -Math.PI / 2;
-    blob.position.set(spot.x, 0.046, spot.z);
+    blob.position.set(spot.x, DECAL_CLEARANCE, spot.z);
     blob.scale.set(0.24, 0.18, 1);
     root.add(blob);
     rigs.push({ pivot, spin, blob, x: spot.x, y: spot.y, z: spot.z, radius: spot.radius, front: spot.steered });
@@ -849,6 +881,7 @@ export function buildScene(track: Track, carsIn: CarPaint[]): SceneBundle {
 	}));
 	ground.rotation.x = -Math.PI / 2;
 	ground.position.y = theme.kind === "coast" ? track.minY - 8 : track.minY - .45;
+	ground.userData.noShadow = true;
 	scene.add(ground);
 	if (theme.kind === "coast") {
 		const sea = new THREE.Mesh(new THREE.CircleGeometry(2400, 48), new THREE.MeshStandardMaterial({
@@ -877,6 +910,7 @@ export function buildScene(track: Track, carsIn: CarPaint[]): SceneBundle {
 		}));
 		sea.rotation.x = -Math.PI / 2;
 		sea.position.y = track.minY - .2;
+		sea.userData.noShadow = true;
 		scene.add(sea);
 		const glint = new THREE.Mesh(new THREE.PlaneGeometry(160, 1600), new THREE.MeshBasicMaterial({
 			color: 0xd7ecff,
@@ -886,6 +920,7 @@ export function buildScene(track: Track, carsIn: CarPaint[]): SceneBundle {
 		}));
 		glint.rotation.x = -Math.PI / 2;
 		glint.position.set(-40, track.minY - .05, -80);
+		glint.userData.noShadow = true;
 		scene.add(glint);
 	}
 	addStartGantry(dressing, track, theme);
@@ -909,9 +944,15 @@ export function buildScene(track: Track, carsIn: CarPaint[]): SceneBundle {
 		lamp.position.set(s.x + s.rx * (s.width * .5 + 3.2), s.y + 5.2, s.z + s.rz * (s.width * .5 + 3.2));
 		dressing.add(lamp);
 	}
-	// Ground surfaces receive the tracked sun so cars read as planted;
-	// meshes added later (cars, lazy scenery) opt in themselves.
+	// The road receives the tracked sun so cars read as planted. The huge
+	// ground disc and the sea do not: a 68 m shadow frustum on a 1900 m plane
+	// draws a hard sliding square. Cars and lazy scenery opt in themselves.
 	scene.traverse((obj) => {
+		const mesh = obj as THREE.Mesh;
+		if (!mesh.isMesh || mesh.userData.noShadow) return;
+		mesh.receiveShadow = true;
+	});
+	roadSurfaces.group.traverse((obj) => {
 		const mesh = obj as THREE.Mesh;
 		if (mesh.isMesh) mesh.receiveShadow = true;
 	});
@@ -970,34 +1011,82 @@ function addStartGantry(parent: THREE.Object3D, track: Track, theme: TrackTheme)
 }
 const SHARED_GEOS: Set<THREE.BufferGeometry> = new Set(Object.values(geos));
 
+function disposeMaterialOnce(
+	material: THREE.Material,
+	seenMaterials: Set<THREE.Material>,
+	seenTextures: Set<THREE.Texture>,
+): void {
+	if (seenMaterials.has(material)) return;
+	seenMaterials.add(material);
+	for (const value of Object.values(material)) {
+		if (!(value instanceof THREE.Texture) || seenTextures.has(value)) continue;
+		seenTextures.add(value);
+		value.dispose();
+	}
+	material.dispose();
+}
+
 export function releaseObject(root: THREE.Object3D): void {
+	const seenGeometries = new Set<THREE.BufferGeometry>();
+	const seenMaterials = new Set<THREE.Material>();
+	const seenTextures = new Set<THREE.Texture>();
 	root.traverse((obj) => {
 		const mesh = obj as THREE.Mesh;
-		if (mesh.geometry && !SHARED_GEOS.has(mesh.geometry)) mesh.geometry.dispose();
+		if (mesh.geometry && !SHARED_GEOS.has(mesh.geometry) && !seenGeometries.has(mesh.geometry)) {
+			seenGeometries.add(mesh.geometry);
+			mesh.geometry.dispose();
+		}
 		const material = mesh.material;
 		if (!material) return;
 		const list = Array.isArray(material) ? material : [material];
-		for (const mat of list) mat.dispose();
+		for (const mat of list) disposeMaterialOnce(mat, seenMaterials, seenTextures);
 	});
 }
+function underRoad(obj: THREE.Object3D, roadRoot: THREE.Object3D): boolean {
+	let p: THREE.Object3D | null = obj;
+	while (p) {
+		if (p === roadRoot) return true;
+		p = p.parent;
+	}
+	return false;
+}
+
 export function disposeBundle(bundle: SceneBundle): void {
+	// Road geometries, materials and textures are owned by the road module.
+	// Disposing them here and again in the traverse below used to double-free
+	// the same GPU resources on every track change.
 	bundle.road.dispose();
+	// Shadow maps belong to their DirectionalLight and are not scene children
+	// with a Mesh material, so scene traversal will never release them.
+	const sun = bundle.scene.userData.sun as THREE.DirectionalLight | undefined;
+	sun?.shadow.map?.dispose();
+	if (sun) sun.shadow.map = null;
 	// Mark the dressing group so a pending lazy scenery load (see buildScene)
 	// skips attaching geometry to an already-disposed bundle.
 	(bundle.dressing as THREE.Group & { userData?: Record<string, unknown> }).userData.disposed = true;
+	const seenGeo = new Set<THREE.BufferGeometry>();
+	const seenMat = new Set<THREE.Material>();
+	const seenTex = new Set<THREE.Texture>();
+	const sceneryData = bundle.dressing.userData;
+	const ownedSceneryGeometries = sceneryData.ownedSceneryGeometries as THREE.BufferGeometry[] | undefined;
+	for (const geometry of ownedSceneryGeometries ?? []) {
+		if (SHARED_GEOS.has(geometry) || seenGeo.has(geometry)) continue;
+		seenGeo.add(geometry);
+		geometry.dispose();
+	}
+	const ownedSceneryMaterials = sceneryData.ownedSceneryMaterials as THREE.Material[] | undefined;
+	for (const material of ownedSceneryMaterials ?? []) disposeMaterialOnce(material, seenMat, seenTex);
 	bundle.scene.traverse((obj) => {
+		if (underRoad(obj, bundle.road.group)) return;
 		const mesh = obj as THREE.Mesh;
-		if (mesh.geometry && !SHARED_GEOS.has(mesh.geometry)) mesh.geometry.dispose();
+		if (mesh.geometry && !SHARED_GEOS.has(mesh.geometry) && !seenGeo.has(mesh.geometry)) {
+			seenGeo.add(mesh.geometry);
+			mesh.geometry.dispose();
+		}
 		const material = mesh.material;
 		if (!material) return;
 		const list = Array.isArray(material) ? material : [material];
-		for (const mat of list) {
-			const mapped = mat as THREE.MeshStandardMaterial;
-			if (mapped.roughnessMap && mapped.roughnessMap !== mapped.map) mapped.roughnessMap.dispose();
-			if (mapped.emissiveMap && mapped.emissiveMap !== mapped.map) mapped.emissiveMap.dispose();
-			if (mapped.map) mapped.map.dispose();
-			mat.dispose();
-		}
+		for (const mat of list) disposeMaterialOnce(mat, seenMat, seenTex);
 	});
 }
 /**
@@ -1052,7 +1141,12 @@ export function syncCar(view: CarView, car: CarState, pitch: number, vis?: CarVi
 		view.root.lookAt(x + fx, y + pitch, z + fz);
 		view.chassis.rotation.set(0, 0, roll * 0.6);
 	} else {
+		// Road plane from the four tire patches: nose-up is negative local X
+		// because +Z is the nose, and left-up is positive local Z because +X
+		// is the driver's left. Accel pitch/roll stay on the chassis.
 		view.root.lookAt(x + fx, y, z + fz);
+		view.root.rotateX(-car.gradePitch);
+		view.root.rotateZ(car.gradeRoll);
 		view.chassis.rotation.set(-bodyPitchV, 0, roll);
 	}
 	view.chassis.position.set(latShift, view.heave, 0);
@@ -1060,12 +1154,19 @@ export function syncCar(view: CarView, car: CarState, pitch: number, vis?: CarVi
 	for (let i = 0; i < view.rigs.length; i++) {
 		const rig = view.rigs[i]!;
 		const drop = view.susp[rig.front ? 0 : 1]!;
-		// Kerb ride height is per side: the chassis already sits on the higher
-		// tire, so this offset only ever lowers a wheel back onto its surface.
-		const kerb = car.airborne ? 0 : rig.x >= 0 ? car.kerbL : car.kerbR;
+		// Residual vs the fitted plane, so a tire on a kerb or a crest still
+		// meets its own patch after the body has taken the shared slope.
+		const kerb = car.airborne ? 0 : (car.wheelKerb[i] ?? (rig.x >= 0 ? car.kerbL : car.kerbR));
 		rig.pivot.position.set(rig.x, rig.y + drop + kerb, rig.z);
 		rig.spin.rotation.x = spin * (0.38 / rig.radius);
 		rig.blob.visible = !car.airborne;
+	}
+	view.root.updateMatrixWorld(true);
+	if (!car.airborne) {
+		for (let i = 0; i < view.rigs.length; i++) {
+			const rig = view.rigs[i]!;
+			syncWheelContactDecal(view.root, rig.pivot, rig.blob, rig.radius, car.wheelNormals[i]);
+		}
 	}
 	for (const p of view.frontPivots) p.rotation.y = steer * 0.42;
 	view.contact.visible = !car.airborne;

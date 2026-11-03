@@ -12,24 +12,25 @@
   a concrete target, with best splits stored locally per circuit.
 - The graphics pass is designed around low draw-call procedural geometry so it
   remains viable on phones without downloading a large asset pack.
+- Four individually modeled cars, detailed wheel assemblies, and four themed
+  circuits are implemented. The procedural vehicle geometry is the current art
+  direction; replacing it is not part of the reconstruction work.
+- Low / Medium / High settings control rendering quality while retaining the
+  same driving behavior.
 
 ## Recommended next milestones
 
-1. **Art lock:** replace the procedural GT/prototype bodies with four authored,
-   unbranded glTF racecars. Keep one shared material budget and provide LOD0,
-   LOD1, and a menu thumbnail for each car.
-2. **Race feel:** add a ghost lap, sector delta, launch practice, and a short
-   post-race “why you lost time” panel. These make retries meaningful instead
-   of only adding more content.
-3. **Content cadence:** add two short circuits and one new cup, then rotate the
-   Daily Run target across the complete car/track pool.
-4. **Phone QA:** test 30/60 fps on representative iPhone and Android devices,
-   especially when bloom, smoke, and scenery are enabled together. Keep a
-   30-fps fallback and preserve the low-quality mode.
-5. **Store builds:** wrap the PWA with Capacitor for Android/iOS, add native
-   splash/icon assets, lock the race screen to landscape, and keep menus
-   portrait-friendly. Then complete store privacy, age rating, and offline
-   asset checks.
+1. **Device QA:** measure frame pacing, memory, and repeated track changes on
+   representative iPhone and Android hardware. Keep the existing low-quality
+   mode usable on slower devices.
+2. **Race practice:** evaluate a ghost lap or launch practice as a separate
+   feature milestone. Sector deltas and the post-race time-loss review are
+   already implemented.
+3. **Content cadence:** consider additional circuits and cups in a separately
+   scoped release; the current game has four circuits and a rotating daily run.
+4. **Store builds:** evaluate native packaging, landscape race presentation,
+   portrait-friendly menus, privacy, age ratings, and offline assets before
+   committing to a store release.
 
 ## Product direction
 
