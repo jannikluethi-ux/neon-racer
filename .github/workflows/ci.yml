@@ -10,11 +10,10 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      # Node 22 matches the known-good local version (the default system Node
-      # here is broken), so CI and local builds agree.
-      - uses: actions/setup-node@v4
+      # Pin Node 22 so CI and local checks use the same runtime.
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -27,5 +26,4 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run test:game
-      # build needs no DATABASE_URL: scripts/migrate.mjs skips gracefully.
       - run: npm run build

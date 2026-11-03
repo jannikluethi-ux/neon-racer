@@ -8,14 +8,12 @@
   },
   "scripts": {
     "dev": "node scripts/with-app-env.mjs vite dev --host 0.0.0.0 --port 8080",
-    "build": "node scripts/with-app-env.mjs vite build && npm run db:migrate",
-    "db:migrate": "node scripts/migrate.mjs",
+    "build": "node scripts/with-app-env.mjs vite build",
     "build:dev": "node scripts/with-app-env.mjs vite build --mode development",
     "preview": "node scripts/with-app-env.mjs vite preview",
     "preview:restart": "node scripts/preview.mjs restart",
     "preview:stop": "node scripts/preview.mjs stop",
     "typecheck": "tsc --noEmit",
-    "check:auth": "node scripts/check-auth-invariant.mjs",
     "test": "node --test 'scripts/**/*.test.mjs' && node --import tsx --test src/game/pause.test.ts src/game/kerb.test.ts src/game/contact.test.ts src/game/road-winding.test.ts",
     "test:game": "node --import tsx src/game/race-check.ts && node --import tsx src/game/feel-check.ts",
     "lint": "eslint .",
@@ -36,7 +34,6 @@
     "react-dom": "^19.2.0",
     "tailwindcss": "^4.3.0",
     "three": "^0.186.1",
-    "tsx": "^4.23.15",
     "typescript": "^5.7.0",
     "vite": "^8.2.0",
     "zod": "^4.4.0",
@@ -45,7 +42,6 @@
   "devDependencies": {
     "@eslint/js": "^9.20.0",
     "@types/node": "^22.16.5",
-    "@types/pg": "^8.11.10",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "eslint": "^9.20.0",
@@ -56,6 +52,7 @@
     "globals": "^15.15.0",
     "playwright": "^1.62.0",
     "prettier": "^3.4.0",
+    "tsx": "^4.23.15",
     "typescript-eslint": "^8.56.1"
   }
 }

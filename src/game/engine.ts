@@ -13,10 +13,10 @@ import {
   placeGrid,
   playerCar,
   startCountdown,
-  stepSim,
   type Sim,
 } from "./simulation";
 import { useGame, type GapRow, type ResultRow } from "./store";
+import { advanceSimulationFrame, SIMULATION_STEP } from "./simulation-frame";
 import { PRESENT } from "./tuning";
 import type { CarState } from "./types";
 import { applyContact, driftStateLabel } from "./vehicle";
@@ -28,8 +28,6 @@ import { themeFor } from "./track-def";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
-
-const STEP = 1 / 60;
 
 function copyPose(into: CarVis, car: CarState): void {
   into.x = car.x;
@@ -573,8 +571,6 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     const frameDt = Math.min(0.05, clock.getDelta());
     const now = clock.getElapsed();
     acc += frameDt;
-    let steps = 0;
-
     const store = useGame.getState();
     // Gamepad Start/Options toggles pause during a race (edge-triggered so a
     // held button only toggles once).
@@ -622,30 +618,21 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       renderPass.scene = bundle.scene;
     }
 
-    let hitPeak = 0;
     // Freeze physics and race timers while paused: skip the step loop
     // entirely so stepSim (which advances sim.raceTime, lapClock, etc.)
     // is never called. Rendering continues so the frozen frame stays on
     // screen behind the pause overlay.
     const frozen = inspect !== null && inspect.freeze !== false;
-    while (!store.paused && !frozen && acc >= STEP && steps < 5) {
+    const frame = advanceSimulationFrame(sim, acc, frozen, readCommand, () => {
       for (let i = 0; i < sim.cars.length; i++) {
         const pose = prevPose[i];
         const car = sim.cars[i];
         if (pose && car) copyPose(pose, car);
       }
-      const racingInput = readCommand();
-      const active =
-        sim.phase === "racing" || sim.phase === "countdown"
-          ? racingInput
-          : { ...racingInput, throttle: 0, brake: 0, steer: 0, boost: false, drift: false };
-      stepSim(sim, STEP, active, store.steerSens);
-      const pulseNow = sim.cars[0]?.crashPulse ?? 0;
-      if (pulseNow > hitPeak) hitPeak = pulseNow;
-      acc -= STEP;
-      steps++;
-    }
-    if (steps === 5) acc = 0;
+    });
+    acc = frame.accumulator;
+    const steps = frame.steps;
+    const hitPeak = frame.hitPeak;
     if (snapPose) {
       for (let i = 0; i < sim.cars.length; i++) {
         const pose = prevPose[i];
@@ -654,7 +641,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       }
       snapPose = false;
     }
-    const alpha = steps >= 5 ? 1 : acc / STEP;
+    const alpha = steps >= 5 ? 1 : acc / SIMULATION_STEP;
     for (let i = 0; i < sim.cars.length; i++) {
       const pose = prevPose[i];
       const car = sim.cars[i];

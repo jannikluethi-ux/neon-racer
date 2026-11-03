@@ -324,7 +324,7 @@ export const useGame = create<GameState>((set, get) => ({
   paused: false,
   setPaused: (paused) => set({ paused }),
   togglePaused: () => set((s) => ({ paused: !s.paused })),
-  unlockAll: import.meta.env.DEV,
+  unlockAll: import.meta.env?.DEV ?? false,
   setUnlockAll: (unlockAll) => set({ unlockAll }),
   cup: null,
   cupPick: "neon-cup",

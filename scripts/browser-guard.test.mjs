@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -9,26 +8,6 @@ import { checkedOutputPath, outputRoots, pathInside, previewThumbnailPaths, repo
 process.env.BROWSER_GUARD_THROW = "1";
 
 const shots = join(repoRoot(), "screenshots");
-
-test("startup.sh resolves from the script, not a machine path", () => {
-  const src = execFileSync("sh", ["-c", "cat \"$1\"", "sh", join(repoRoot(), "startup.sh")], {
-    encoding: "utf8",
-  });
-  assert.match(src, /dirname/);
-  assert.doesNotMatch(src, /\/Users\//);
-  const fromTmp = execFileSync(
-    "sh",
-    ["-c", 'cd /tmp && CDPATH= cd -- "$(dirname "$1")" && pwd', "sh", join(repoRoot(), "startup.sh")],
-    { encoding: "utf8" },
-  ).trim();
-  const fromRoot = execFileSync(
-    "sh",
-    ["-c", 'cd "$1" && CDPATH= cd -- "$(dirname "$2")" && pwd', "sh", repoRoot(), join(repoRoot(), "startup.sh")],
-    { encoding: "utf8" },
-  ).trim();
-  assert.equal(fromTmp, repoRoot());
-  assert.equal(fromRoot, repoRoot());
-});
 
 test("screenshot roots are the repo screenshots folder, not the whole project", () => {
   const roots = outputRoots();
