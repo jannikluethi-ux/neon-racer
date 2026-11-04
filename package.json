@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "node scripts/with-app-env.mjs vite dev --host 0.0.0.0 --port 8080",
     "build": "node scripts/with-app-env.mjs vite build",
+    "build:android": "node scripts/build-android.mjs",
+    "android:apk": "node scripts/android-apk.mjs",
     "build:dev": "node scripts/with-app-env.mjs vite build --mode development",
     "preview": "node scripts/with-app-env.mjs vite preview",
     "preview:restart": "node scripts/preview.mjs restart",
@@ -20,6 +22,10 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@fontsource/outfit": "^5.3.0",
+    "@fontsource/rajdhani": "^5.3.0",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-router": "^1.170.0",
     "@tanstack/react-start": "~1.168.60",
@@ -40,6 +46,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
     "@eslint/js": "^9.20.0",
     "@types/node": "^22.16.5",
     "@types/react": "^19.2.0",

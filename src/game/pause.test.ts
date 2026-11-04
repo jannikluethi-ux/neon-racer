@@ -2,7 +2,7 @@ import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createSim, startCountdown, stepSim } from "./simulation.ts";
 import { advanceSimulationFrame, SIMULATION_STEP } from "./simulation-frame.ts";
-import { bindPauseOnHidden } from "./pause-visibility.ts";
+import { bindPauseOnBackground, bindPauseOnHidden } from "./pause-visibility.ts";
 import { useGame } from "./store.ts";
 import { IDLE_INPUT } from "./types.ts";
 
@@ -62,6 +62,16 @@ describe("pause freezes the race", () => {
 
     target.hidden = true;
     target.dispatchEvent(new Event("visibilitychange"));
+    assert.equal(useGame.getState().paused, true);
+    unbind();
+  });
+
+  it("pauses the real store when the native app enters the background", () => {
+    const target = new EventTarget();
+    useGame.setState({ phase: "racing", paused: false });
+    const unbind = bindPauseOnBackground(target, () => useGame.getState().phase === "racing");
+
+    target.dispatchEvent(new Event("neonracerbackground"));
     assert.equal(useGame.getState().paused, true);
     unbind();
   });

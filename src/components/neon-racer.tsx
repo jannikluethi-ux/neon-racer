@@ -10,7 +10,7 @@ import { CarSelect, CupBrief, CupConfirm, CupDifficulty, CupHome, TitleScreen, T
 import { ProfileScreen } from "@/components/profile-screen";
 import { AI_CARS } from "@/game/tuning";
 import { vehicleById } from "@/game/vehicle-def";
-import { bindPauseOnHidden } from "@/game/pause-visibility";
+import { bindPauseOnBackground, bindPauseOnHidden } from "@/game/pause-visibility";
 
 function hold(set: (down: boolean) => void) {
   return {
@@ -47,10 +47,12 @@ export function NeonRacer() {
       }
     };
     const unbindVisibility = bindPauseOnHidden(document, () => racing);
+    const unbindBackground = bindPauseOnBackground(window, () => racing);
     window.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       unbindVisibility();
+      unbindBackground();
     };
   }, [phase]);
 
