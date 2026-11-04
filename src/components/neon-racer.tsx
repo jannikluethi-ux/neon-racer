@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type PointerEvent } from "react";
-import { ChevronLeft, ChevronRight, RotateCcw, House } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { Gauge, House, Pause, Play, RotateCcw, Zap } from "lucide-react";
 import { formatRaceTime } from "@/game/math";
-import { touch } from "@/game/input";
+import { mapSteeringWheelRotation, STEERING_WHEEL_LIMIT, touch } from "@/game/input";
 import { loadSave } from "@/game/save";
 import { useGame } from "@/game/store";
 import { cupById, currentRound, ordinal, playerStanding, pointsForPlace, racedSeconds, roundsOf, standings } from "@/game/championship";
@@ -26,6 +26,99 @@ function hold(set: (down: boolean) => void) {
   };
 }
 
+const INTRO_SEEN_KEY = "neon-racer-intro-seen";
+
+function IntroOverlay({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="intro-scrim">
+      <section className="glass intro-card" role="dialog" aria-modal="true" aria-labelledby="intro-title">
+        <p className="eyebrow">Quick start</p>
+        <h2 id="intro-title">How to play</h2>
+        <ul className="intro-controls">
+          <li><span className="intro-glyph">↻</span><span><strong>Steer</strong><small>Drag around the wheel on the left.</small></span></li>
+          <li><span className="intro-glyph">GO</span><span><strong>Gas / brake</strong><small>Hold the right pedals. Brake always overrides auto-accelerate.</small></span></li>
+          <li><span className="intro-glyph"><Zap size={17} /></span><span><strong>Nitro</strong><small>Hold NITRO on the right for a burst.</small></span></li>
+          <li><span className="intro-glyph"><Pause size={17} /></span><span><strong>Pause</strong><small>Tap Pause in the race or press P / Esc.</small></span></li>
+          <li><span className="intro-glyph"><Gauge size={17} /></span><span><strong>Auto-accelerate</strong><small>On by default on touch. Change it any time in Settings.</small></span></li>
+        </ul>
+        <div className="intro-actions">
+          <button type="button" className="btn" onClick={onClose}>Skip intro</button>
+          <button type="button" className="btn btn-primary" onClick={onClose}>Got it</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TouchControls() {
+  const [wheelDegrees, setWheelDegrees] = useState(0);
+  const startAngle = useRef<number | null>(null);
+
+  const pointerAngle = (event: PointerEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return Math.atan2(event.clientY - (rect.top + rect.height / 2), event.clientX - (rect.left + rect.width / 2));
+  };
+  const releaseWheel = () => {
+    startAngle.current = null;
+    touch.steer = 0;
+    setWheelDegrees(0);
+  };
+  const onWheelDown = (event: PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    startAngle.current = pointerAngle(event);
+    touch.steer = 0;
+  };
+  const onWheelMove = (event: PointerEvent<HTMLButtonElement>) => {
+    if (startAngle.current == null) return;
+    event.preventDefault();
+    const current = pointerAngle(event);
+    let delta = current - startAngle.current;
+    if (delta > Math.PI) delta -= Math.PI * 2;
+    if (delta < -Math.PI) delta += Math.PI * 2;
+    const rotation = Math.max(-STEERING_WHEEL_LIMIT, Math.min(STEERING_WHEEL_LIMIT, delta));
+    touch.steer = mapSteeringWheelRotation(rotation);
+    setWheelDegrees((rotation * 180) / Math.PI);
+  };
+
+  return (
+    <div className="touch-controls" aria-label="Touch driving controls">
+      <div className="steer-cluster">
+        <button
+          type="button"
+          className="steering-wheel"
+          aria-label="Steering wheel. Drag around the rim to steer."
+          style={{ "--wheel-angle": `${wheelDegrees}deg` } as CSSProperties}
+          onPointerDown={onWheelDown}
+          onPointerMove={onWheelMove}
+          onPointerUp={releaseWheel}
+          onPointerCancel={releaseWheel}
+          onLostPointerCapture={releaseWheel}
+        >
+          <span className="wheel-shape" aria-hidden="true">
+            <i className="wheel-spoke wheel-spoke-top" />
+            <i className="wheel-spoke wheel-spoke-left" />
+            <i className="wheel-spoke wheel-spoke-right" />
+            <i className="wheel-hub" />
+          </span>
+          <span className="wheel-label">STEER</span>
+        </button>
+      </div>
+      <div className="action-cluster">
+        <button type="button" className="pad boost" aria-label="Nitro" {...hold((v) => (touch.boost = v))}>
+          <Zap size={18} /> NITRO
+        </button>
+        <button type="button" className="pad brake" {...hold((v) => (touch.brake = v))}>
+          BRAKE
+        </button>
+        <button type="button" className="pad gas" {...hold((v) => (touch.throttle = v))}>
+          GAS
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function NeonRacer() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const miniRef = useRef<HTMLCanvasElement>(null);
@@ -35,6 +128,7 @@ export function NeonRacer() {
   const paused = useGame((s) => s.paused);
   const touchMode = useGame((s) => s.touch);
   const [engineError, setEngineError] = useState<string | null>(null);
+  const [introOpen, setIntroOpen] = useState(false);
 
   // Escape / P toggle pause during a race; auto-pause when the tab is hidden.
   useEffect(() => {
@@ -58,12 +152,26 @@ export function NeonRacer() {
 
   useEffect(() => {
     useGame.getState().hydrate(loadSave());
+    try {
+      setIntroOpen(localStorage.getItem(INTRO_SEEN_KEY) !== "1");
+    } catch {
+      setIntroOpen(false);
+    }
     if (import.meta.env.DEV) {
       const flag = new URLSearchParams(window.location.search).get("unlock");
       if (flag === "0") useGame.getState().setUnlockAll(false);
       else if (flag === "1") useGame.getState().setUnlockAll(true);
     }
   }, []);
+
+  const closeIntro = () => {
+    try {
+      localStorage.setItem(INTRO_SEEN_KEY, "1");
+    } catch {
+      // The tutorial can still be dismissed when storage is unavailable.
+    }
+    setIntroOpen(false);
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -109,10 +217,10 @@ export function NeonRacer() {
           </div>
         </div>
       )}
-      {(phase === "menu" && screen === "title") && <TitleScreen />}
+      {(phase === "menu" && screen === "title") && <TitleScreen onShowHowTo={() => setIntroOpen(true)} />}
       {(phase === "menu" && screen === "cars") && <CarSelect />}
       {(phase === "menu" && screen === "tracks") && <TrackSelect />}
-      {(phase === "menu" && screen === "settings") && <SettingsPanel />}
+      {(phase === "menu" && screen === "settings") && <SettingsPanel onShowHowTo={() => setIntroOpen(true)} />}
       {(phase === "menu" && screen === "profile") && <ProfileScreen />}
       {(phase === "menu" && screen === "cup") && <CupHome />}
       {(phase === "menu" && screen === "cup-diff") && <CupDifficulty />}
@@ -151,27 +259,8 @@ export function NeonRacer() {
       {phase === "results" && <Results />}
       <CupConfirm />
       <canvas ref={miniRef} className="minimap" width={288} height={216} />
-      <div className="touch-controls">
-        <div className="steer-cluster">
-          <button type="button" className="pad" aria-label="Steer left" {...hold((v) => (touch.left = v))}>
-            <ChevronLeft />
-          </button>
-          <button type="button" className="pad" aria-label="Steer right" {...hold((v) => (touch.right = v))}>
-            <ChevronRight />
-          </button>
-        </div>
-        <div className="action-cluster">
-          <button type="button" className="pad boost" {...hold((v) => (touch.boost = v))}>
-            NITRO
-          </button>
-          <button type="button" className="pad brake" {...hold((v) => (touch.brake = v))}>
-            BRAKE
-          </button>
-          <button type="button" className="pad gas" {...hold((v) => (touch.throttle = v))}>
-            GAS
-          </button>
-        </div>
-      </div>
+      <TouchControls />
+      {introOpen && <IntroOverlay onClose={closeIntro} />}
     </div>
   );
 }
@@ -202,11 +291,12 @@ function MobileRaceHint({ phase }: { phase: string }) {
   );
 }
 
-function SettingsPanel() {
+function SettingsPanel({ onShowHowTo }: { onShowHowTo: () => void }) {
   const quality = useGame((s) => s.quality);
   const volume = useGame((s) => s.volume);
   const steerSens = useGame((s) => s.steerSens);
   const touchMode = useGame((s) => s.touch);
+  const autoAccelerate = useGame((s) => s.autoAccelerate);
   const difficulty = useGame((s) => s.difficulty);
   const patch = useGame((s) => s.patchSettings);
 
@@ -285,6 +375,21 @@ function SettingsPanel() {
           ))}
         </div>
       </label>
+      <label className="toggle-row">
+        <span className="toggle-copy">
+          <strong>Auto-accelerate</strong>
+          <small>Keep throttle held while racing. Braking takes priority.</small>
+        </span>
+        <input
+          className="switch-input"
+          type="checkbox"
+          checked={autoAccelerate}
+          onChange={(event) => patch({ autoAccelerate: event.currentTarget.checked })}
+          aria-label="Auto-accelerate"
+        />
+        <span className="switch-track" aria-hidden="true"><i /></span>
+      </label>
+      <button type="button" className="btn" onClick={onShowHowTo}>How to play</button>
       <button type="button" className="btn btn-primary" onClick={() => useGame.getState().openScreen("title", "browse")}>
         Back
       </button>
@@ -331,10 +436,8 @@ function Hud() {
   const position = useGame((s) => s.position);
   const racers = useGame((s) => s.racers);
   const boost = useGame((s) => s.boost);
-  const drift = useGame((s) => s.drift);
-  const drifting = useGame((s) => s.drifting);
+  const boosting = useGame((s) => s.telemetry.boost);
   const gear = useGame((s) => s.gear);
-  const rpm = useGame((s) => s.rpm);
   const raceTime = useGame((s) => s.raceTime);
   const lapTime = useGame((s) => s.lapTime);
   const bestLap = useGame((s) => s.bestLap);
@@ -346,37 +449,51 @@ function Hud() {
   const banner = useGame((s) => s.banner);
   const wrongWay = useGame((s) => s.wrongWay);
   const phase = useGame((s) => s.phase);
+  const paused = useGame((s) => s.paused);
   const course = useGame((s) => s.course);
   const cup = useGame((s) => s.cup);
   const raceContext = useGame((s) => s.raceContext);
   const showClock = phase === "racing" || phase === "finishing" || phase === "results";
   const cupLive = raceContext?.cup && cup && !cup.complete ? cup : null;
   const cupPlace = cupLive && cupLive.results.length > 0 ? playerStanding(cupLive) : null;
+  const speedFill = Math.max(0, Math.min(1, speed / 280));
 
   return (
     <div className="hud">
+      <div className="hud-actions" aria-label="Race controls">
+        <button type="button" className="btn" aria-label="Restart race" onClick={() => useGame.getState().requestRestart()}>
+          <RotateCcw size={17} /><span>Restart</span>
+        </button>
+        <button type="button" className="btn" aria-label={paused ? "Resume race" : "Pause race"} onClick={() => useGame.getState().togglePaused()}>
+          {paused ? <Play size={17} /> : <Pause size={17} />}<span>{paused ? "Resume" : "Pause"}</span>
+        </button>
+        <button type="button" className="btn" aria-label="Return home" onClick={() => useGame.getState().requestMenu("title")}>
+          <House size={17} /><span>Home</span>
+        </button>
+      </div>
       <div className="hud-top">
-        <div className="hud-block">
+        <div className="hud-block hud-position">
           <p className="hud-label">POSITION</p>
           <p className="hud-value">{course === "pad" ? "PAD" : `${position} / ${racers}`}</p>
-          <div className="instrument">
-            <p className="hud-speed">{Math.round(speed)}</p>
-            <p className="hud-unit">KM/H · G{gear}</p>
-          </div>
-          <p className="hud-label nitro-label">NITRO</p>
-          <div className="meters">
-            <div className="meter" aria-label="Nitro">
-              <span style={{ transform: `scaleX(${Math.max(0.02, boost)})` }} />
-            </div>
-            <div className="meter rpm" aria-label="RPM">
-              <span style={{ transform: `scaleX(${Math.max(0.04, rpm)})` }} />
-            </div>
-            <div className="meter drift" aria-hidden={!drifting}>
-              <span style={{ transform: `scaleX(${Math.max(0.02, drift)})` }} />
-            </div>
-          </div>
           <GapList />
         </div>
+        <section className="speedometer" aria-label={`Speed ${Math.round(speed)} kilometres per hour, gear ${gear}`}>
+          <div className="speedometer-heading">
+            <span className="hud-label">SPEED</span>
+            <span className="speed-gear">G{gear}</span>
+          </div>
+          <div className="speed-dial">
+            <svg viewBox="0 0 128 76" aria-hidden="true">
+              <path className="speed-arc-track" d="M18 65 A46 46 0 0 1 110 65" pathLength="100" />
+              <path className="speed-arc-fill" d="M18 65 A46 46 0 0 1 110 65" pathLength="100" style={{ strokeDashoffset: `${100 - speedFill * 100}` }} />
+            </svg>
+            <div className="speed-readout"><strong>{Math.round(speed)}</strong><span>km/h</span></div>
+          </div>
+          <div className={`nitro-readout${boosting ? " nitro-active" : ""}`}>
+            <span className="nitro-state"><Zap size={14} />{boosting ? "BOOST LIVE" : boost > 0.08 ? "NITRO READY" : "RECHARGING"}</span>
+            <span className="nitro-bar"><i style={{ width: `${Math.round(boost * 100)}%` }} /></span>
+          </div>
+        </section>
         <div className="hud-side">
           <div className="hud-block hud-right">
             <p className="hud-label">LAP</p>
@@ -402,16 +519,6 @@ function Hud() {
               </p>
             ) : null}
             {raceContext?.daily ? <p className="hud-split daily-live">DAILY RUN · TODAY&apos;S EVENT</p> : null}
-          </div>
-          <div className="hud-actions">
-            <button type="button" className="btn" onClick={() => useGame.getState().requestRestart()}>
-              <RotateCcw size={16} />
-              Restart
-            </button>
-            <button type="button" className="btn" onClick={() => useGame.getState().requestMenu()}>
-              <House size={16} />
-              Menu
-            </button>
           </div>
         </div>
       </div>

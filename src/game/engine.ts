@@ -30,6 +30,10 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 
+/** One tuning point for the chase camera's trailing distance. */
+const CHASE_CAMERA_DISTANCE = 4.4;
+const CHASE_CAMERA_BARRIER_MARGIN = 0.8;
+
 function copyPose(into: CarVis, car: CarState): void {
   into.x = car.x;
   into.y = car.y;
@@ -797,19 +801,23 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       const boostN = player.boostBlend;
       const slideN = clamp(Math.abs(player.slipAngle) / 0.4, 0, 1);
       const brakeN = clamp(player.brakeVisual, 0, 1);
-      const dist =
-        7.4 +
-        Math.min(4.2, speed * 0.04) +
-        accelN * PRESENT.camAccelPull +
-        boostN * PRESENT.camBoostPull +
-        slideN * 0.45;
-      const height = 2.55 + Math.min(1.3, speed * 0.018) - brakeN * 0.1;
+      const dist = CHASE_CAMERA_DISTANCE;
+      const height = 1.82 + Math.min(0.72, speed * 0.012) - brakeN * 0.06;
       const rx = Math.cos(pyaw);
       const rz = -Math.sin(pyaw);
       desiredX = px - fx * dist + rx * latN * 0.42;
       desiredZ = pz - fz * dist + rz * latN * 0.42;
       desiredY = py + height;
-      const ahead = 6.5 + Math.min(10, speed * 0.18);
+      // Keep the camera on the inside of the barriers when the player rides an
+      // edge. Looking up the course at the same arc as the trailing camera
+      // makes this correction follow bends and elevation changes smoothly.
+      const cameraSample = sampleAt(courseOf(sim), player.arc - dist);
+      const cameraLat = (desiredX - cameraSample.x) * cameraSample.rx + (desiredZ - cameraSample.z) * cameraSample.rz;
+      const safeLat = clamp(cameraLat, -cameraSample.width * 0.5 + CHASE_CAMERA_BARRIER_MARGIN, cameraSample.width * 0.5 - CHASE_CAMERA_BARRIER_MARGIN);
+      desiredX += (safeLat - cameraLat) * cameraSample.rx;
+      desiredZ += (safeLat - cameraLat) * cameraSample.rz;
+      desiredY = Math.max(desiredY, cameraSample.y + 1.72);
+      const ahead = 3.8 + Math.min(6.2, speed * 0.12);
       targetLookX = px + fx * ahead + rx * latN * 0.7;
       targetLookY = py + 1.15 - brakeN * 0.2 + Math.max(0, accelN) * 0.05;
       targetLookZ = pz + fz * ahead + rz * latN * 0.7;

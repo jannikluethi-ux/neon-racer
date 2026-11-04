@@ -1,17 +1,42 @@
 import { clamp } from "./math";
+import { useGame } from "./store";
 import type { InputCommand } from "./types";
 
 const keys = new Set<string>();
 let override: Set<string> | null = null;
 
 export const touch = {
-  left: false,
-  right: false,
+  steer: 0,
   throttle: false,
   brake: false,
   drift: false,
   boost: false,
 };
+
+export const STEERING_WHEEL_LIMIT = (115 * Math.PI) / 180;
+const STEERING_WHEEL_DEAD_ZONE = 0.08;
+
+/** Maps clockwise wheel rotation to right steering and removes a small centre dead zone. */
+export function mapSteeringWheelRotation(rotationRadians: number): number {
+  const normalized = clamp(-rotationRadians / STEERING_WHEEL_LIMIT, -1, 1);
+  const magnitude = Math.abs(normalized);
+  if (magnitude <= STEERING_WHEEL_DEAD_ZONE) return 0;
+  return Math.sign(normalized) * ((magnitude - STEERING_WHEEL_DEAD_ZONE) / (1 - STEERING_WHEEL_DEAD_ZONE));
+}
+
+/** Brake input always suppresses both manual and automatic throttle. */
+export function resolveThrottle(throttle: number, brake: number, autoAccelerate: boolean): number {
+  if (brake > 0.2) return 0;
+  return Math.max(throttle, autoAccelerate ? 1 : 0);
+}
+
+function clearTouchInputs(): void {
+  touch.steer = 0;
+  touch.throttle = false;
+  touch.brake = false;
+  touch.drift = false;
+  touch.boost = false;
+}
 
 function down(code: string): boolean {
   if (override) return override.has(code);
@@ -31,7 +56,10 @@ export function attachInput(): () => void {
   const onUp = (e: KeyboardEvent) => {
     keys.delete(e.code);
   };
-  const clear = () => keys.clear();
+  const clear = () => {
+    keys.clear();
+    clearTouchInputs();
+  };
   window.addEventListener("keydown", onDown);
   window.addEventListener("keyup", onUp);
   window.addEventListener("blur", clear);
@@ -91,8 +119,7 @@ export function readCommand(): InputCommand {
   let boost = down("Space") || down("ShiftLeft") || down("ShiftRight");
 
   if (!override) {
-    if (touch.left) steer += 1;
-    if (touch.right) steer -= 1;
+    steer += touch.steer;
     if (touch.throttle) throttle = 1;
     if (touch.brake) brake = 1;
     if (touch.boost) boost = true;
@@ -103,7 +130,9 @@ export function readCommand(): InputCommand {
     boost = boost || pad.boost;
   }
 
-  if (brake > 0.2) throttle = 0;
+  const settings = useGame.getState();
+  const autoAccelerate = settings.autoAccelerate && settings.phase === "racing";
+  throttle = resolveThrottle(throttle, brake, autoAccelerate);
 
   return {
     throttle,

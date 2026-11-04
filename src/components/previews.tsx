@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { buildCourse } from "@/game/track";
+import { drawCarModelPreview } from "@/game/car-preview";
 import { themeFor } from "@/game/track-def";
 import type { VehicleDefinition } from "@/game/vehicle-def";
 
@@ -7,44 +8,23 @@ function hex(color: number): string {
   return `#${color.toString(16).padStart(6, "0")}`;
 }
 
-/** Lightweight SVG previews avoid opening a WebGL context for every garage card. */
+/** Project the current car-model meshes into a 2D canvas for each garage card. */
 export function CarStage({ def }: { def: VehicleDefinition }) {
-  const paint = hex(def.body.paint);
-  const accent = hex(def.body.accent);
-  const wide = def.body.body[0] > 1.18;
-  const long = def.body.body[2] > 1.12;
-  const low = def.body.body[1] < 0.9;
-  const number = def.id === "vector" ? "27" : def.id === "vanta" ? "04" : def.id === "surge" ? "51" : "88";
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const render = () => drawCarModelPreview(canvas, def);
+    render();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(render);
+    observer?.observe(canvas);
+    return () => observer?.disconnect();
+  }, [def]);
+
   return (
-    <div className="stage car-stage" aria-hidden="true">
-      <svg viewBox="0 0 360 220" role="presentation">
-        <defs>
-          <linearGradient id={`paint-${def.id}`} x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0" stopColor="#f5fbff" stopOpacity=".76" />
-            <stop offset=".38" stopColor={paint} />
-            <stop offset="1" stopColor="#101820" />
-          </linearGradient>
-          <radialGradient id={`glow-${def.id}`}>
-            <stop stopColor={paint} stopOpacity=".55" />
-            <stop offset="1" stopColor={paint} stopOpacity="0" />
-          </radialGradient>
-        </defs>
-        <ellipse cx="180" cy="177" rx="127" ry="25" fill={`url(#glow-${def.id})`} />
-        <ellipse cx="180" cy="183" rx="104" ry="12" fill="#05080d" opacity=".84" />
-        <g transform="translate(0 2)">
-          <path d={`M${wide ? 54 : 62} 143 77 112q10-13 35-17l${long ? 20 : 22}-31q8-10 24-12h${low ? 42 : 45}q18 2 28 14l22 29q26 6 38 18l13 31-13 20H76z`} fill={`url(#paint-${def.id})`} stroke="#d8f8ff" strokeOpacity=".62" strokeWidth="2" />
-          <path d={`m${wide ? 138 : 143} 97 17-28q4-6 14-7h${low ? 31 : 27}q10 1 15 9l18 27z`} fill="#101d2a" stroke="#b9efff" strokeOpacity=".62" strokeWidth="2" />
-          <path d="m176 64-12 32m36-33 13 34" stroke="#b9efff" strokeOpacity=".32" />
-          <path d="m87 124 34-8m152 8 29 9" stroke="#fff" strokeOpacity=".6" strokeWidth="3" />
-          <path d="m75 146 34 2m142 0 39-4" stroke="#ff4d75" strokeWidth="5" strokeLinecap="round" />
-          <path d="m131 165 18 1m66 0 18-1" stroke="#2ee6ff" strokeWidth="3" strokeLinecap="round" />
-          <path d="M84 132v20m192-20v20" stroke="#111820" strokeWidth="16" strokeLinecap="round" />
-          <path d="M59 157h242" stroke="#0b0e13" strokeWidth="5" />
-          <path d="M112 119h18m102 0h18" stroke={accent} strokeWidth="7" strokeLinecap="round" opacity=".86" />
-          <path d="M108 175h144" stroke={accent} strokeOpacity=".72" strokeWidth="3" />
-          <text x="180" y="151" fill="#f8fbff" fontSize="14" fontFamily="Arial Narrow, Arial, sans-serif" fontWeight="900" textAnchor="middle">{number}</text>
-        </g>
-      </svg>
+    <div className="stage car-stage" aria-hidden="true" data-car-id={def.id}>
+      <canvas ref={canvasRef} className="car-preview-canvas" />
     </div>
   );
 }

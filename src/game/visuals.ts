@@ -6,7 +6,8 @@ import { themeFor, type TrackTheme } from "./track-def";
 import { buildRoadSurfaces, type RoadSurfaces } from "./road-surface";
 import { bodyWidthAt, buildCarGeometry, type CarDims, type CarRole } from "./car-model";
 import { DECAL_CLEARANCE } from "./contact";
-import { vehicleById } from "./vehicle-def";
+import { vehicleById, vehicleRaceNumber } from "./vehicle-def";
+import { finishPaint } from "./vehicle-paint";
 
 /** One wheel: steer pivot, spinning hub and the contact patch decal under it. */
 export type WheelRig = {
@@ -130,14 +131,6 @@ const geos = {  glow: new THREE.BoxGeometry(1.35, 0.04, 2.6),
 
 /** Look and livery live here; all hard geometry comes from car-model. */
 
-function finishPaint(hex: number): THREE.Color {
-  const c = new THREE.Color(hex);
-  const hsl = { h: 0, s: 0, l: 0 };
-  c.getHSL(hsl);
-  c.setHSL(hsl.h, Math.min(0.7, Math.max(0.4, hsl.s + 0.12)), Math.min(0.42, Math.max(0.2, hsl.l + 0.08)));
-  return c;
-}
-
 function roleFromColor(color: number): string {
   if (color === 0xff3dce) return "vex";
   if (color === 0xb26bff) return "ion";
@@ -149,7 +142,7 @@ function raceNumberFor(role: string, vehicleId: string): string {
   if (role === "vex") return "13";
   if (role === "ion") return "44";
   if (role === "nyx") return "08";
-  return ({ vector: "27", vanta: "04", surge: "51", aegis: "88" } as Record<string, string>)[vehicleId] ?? "27";
+  return vehicleRaceNumber(vehicleId);
 }
 
 function numberTexture(role: string, vehicleId: string, accent: number): THREE.CanvasTexture {

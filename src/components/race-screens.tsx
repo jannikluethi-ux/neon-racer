@@ -28,13 +28,14 @@ function snapshot() {
       volume: s.volume,
       steerSens: s.steerSens,
       touch: s.touch,
+      autoAccelerate: s.autoAccelerate,
       difficulty: s.difficulty,
     },
     championship: s.cup,
   };
 }
 
-export function TitleScreen() {
+export function TitleScreen({ onShowHowTo }: { onShowHowTo: () => void }) {
   const vehicle = useGame((s) => vehicleById(s.selectedVehicle));
   const track = useGame((s) => trackById(s.selectedTrack));
   const records = useGame((s) => s.records);
@@ -71,6 +72,9 @@ export function TitleScreen() {
         </button>
         <button type="button" className="btn" onClick={() => open("settings", "browse")}>
           Settings
+        </button>
+        <button type="button" className="btn" onClick={onShowHowTo}>
+          How to play
         </button>
         <button type="button" className="btn" onClick={() => useGame.getState().requestPad()}>
           Handling pad

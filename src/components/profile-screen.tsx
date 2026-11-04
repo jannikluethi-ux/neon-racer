@@ -11,14 +11,14 @@ import {
 } from "@/game/mastery";
 import { formatRaceTime } from "@/game/math";
 import { useGame } from "@/game/store";
-import type { SaveData } from "@/game/save";
+import { SAVE_VERSION, type SaveData } from "@/game/save";
 import { trackById } from "@/game/track-def";
 import { vehicleById } from "@/game/vehicle-def";
 
 function careerSave(): SaveData {
   const s = useGame.getState();
   return {
-    saveVersion: 4,
+    saveVersion: SAVE_VERSION,
     unlockedVehicles: s.unlockedVehicles,
     unlockedTracks: s.unlockedTracks,
     selectedVehicle: s.selectedVehicle,
@@ -29,6 +29,7 @@ function careerSave(): SaveData {
       volume: s.volume,
       steerSens: s.steerSens,
       touch: s.touch,
+      autoAccelerate: s.autoAccelerate,
       difficulty: s.difficulty,
     },
     championship: s.cup,

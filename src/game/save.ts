@@ -32,6 +32,7 @@ export type SaveSettings = {
   volume: number;
   steerSens: number;
   touch: TouchMode;
+  autoAccelerate: boolean;
   difficulty: AiDifficulty;
 };
 
@@ -51,7 +52,7 @@ export type SaveData = {
   challenges: Record<string, ChallengeProgress>;
 };
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 const KEY = "neon-racer-save";
 const LEGACY_KEY = "neon-racer-v1";
 
@@ -78,6 +79,7 @@ export const defaultSave: SaveData = {
     volume: 0.8,
     steerSens: 1,
     touch: "auto",
+    autoAccelerate: false,
     difficulty: "normal",
   },
   championship: null,
@@ -245,6 +247,7 @@ function cleanSettings(value: unknown, fallback: SaveSettings): SaveSettings {
     volume: typeof row.volume === "number" ? Math.min(1, Math.max(0, row.volume)) : fallback.volume,
     steerSens: typeof row.steerSens === "number" ? Math.min(1.4, Math.max(0.6, row.steerSens)) : fallback.steerSens,
     touch,
+    autoAccelerate: typeof row.autoAccelerate === "boolean" ? row.autoAccelerate : fallback.autoAccelerate,
     difficulty,
   };
 }
@@ -275,10 +278,11 @@ function finishSave(data: SaveData): SaveData {
   return next;
 }
 
-function blankSave(): SaveData {
+function blankSave(autoAccelerateDefault = defaultSave.settings.autoAccelerate): SaveData {
   const maps = cleanMasteryMaps(null, null);
   return finishSave({
     ...defaultSave,
+    settings: { ...defaultSave.settings, autoAccelerate: autoAccelerateDefault },
     unlockedVehicles: [...defaultSave.unlockedVehicles],
     unlockedTracks: [...defaultSave.unlockedTracks],
     trackRecords: {},
@@ -290,7 +294,7 @@ function blankSave(): SaveData {
   });
 }
 
-function fromLegacy(raw: LegacyV1): SaveData {
+function fromLegacy(raw: LegacyV1, autoAccelerateDefault: boolean): SaveData {
   const maps = cleanMasteryMaps(null, null);
   const next: SaveData = {
     ...defaultSave,
@@ -301,7 +305,7 @@ function fromLegacy(raw: LegacyV1): SaveData {
     carMastery: maps.carMastery,
     career: emptyCareer(),
     challenges: {},
-    settings: cleanSettings(raw, defaultSave.settings),
+    settings: cleanSettings(raw, { ...defaultSave.settings, autoAccelerate: autoAccelerateDefault }),
     championship: null,
   };
   if (typeof raw.bestLap === "number" || typeof raw.bestTime === "number") {
@@ -313,9 +317,22 @@ function fromLegacy(raw: LegacyV1): SaveData {
   return finishSave(next);
 }
 
-export function normalizeSave(parsed: Partial<SaveData> | LegacyV1 | null | undefined): SaveData {
-  if (!parsed || typeof parsed !== "object") return blankSave();
-  if ("version" in parsed && parsed.version === 1 && !("saveVersion" in parsed)) return fromLegacy(parsed as LegacyV1);
+export function detectAutoAccelerateDefault(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return (
+    (navigator.maxTouchPoints ?? 0) > 0 ||
+    (typeof window !== "undefined" && Boolean(window.matchMedia?.("(pointer: coarse)").matches))
+  );
+}
+
+export function normalizeSave(
+  parsed: Partial<SaveData> | LegacyV1 | null | undefined,
+  autoAccelerateDefault = detectAutoAccelerateDefault(),
+): SaveData {
+  if (!parsed || typeof parsed !== "object") return blankSave(autoAccelerateDefault);
+  if ("version" in parsed && parsed.version === 1 && !("saveVersion" in parsed)) {
+    return fromLegacy(parsed as LegacyV1, autoAccelerateDefault);
+  }
   const data = parsed as Partial<SaveData>;
   const vehicleIds = VEHICLES.map((car) => car.id);
   const trackIds = TRACKS.map((track) => track.id);
@@ -332,7 +349,7 @@ export function normalizeSave(parsed: Partial<SaveData> | LegacyV1 | null | unde
     selectedVehicle: cleanId(data.selectedVehicle, vehicleIds, "vector"),
     selectedTrack: cleanId(data.selectedTrack, trackIds, "apex"),
     trackRecords,
-    settings: cleanSettings(data.settings, defaultSave.settings),
+    settings: cleanSettings(data.settings, { ...defaultSave.settings, autoAccelerate: autoAccelerateDefault }),
     championship: cleanCup(data.championship),
     trackMastery: maps.trackMastery,
     carMastery: maps.carMastery,
@@ -342,18 +359,19 @@ export function normalizeSave(parsed: Partial<SaveData> | LegacyV1 | null | unde
 }
 
 export function loadSave(): SaveData {
+  const autoAccelerateDefault = detectAutoAccelerateDefault();
   try {
     const current = localStorage.getItem(KEY);
-    if (current) return normalizeSave(JSON.parse(current) as Partial<SaveData>);
+    if (current) return normalizeSave(JSON.parse(current) as Partial<SaveData>, autoAccelerateDefault);
     const legacy = localStorage.getItem(LEGACY_KEY);
     if (legacy) {
-      const migrated = normalizeSave(JSON.parse(legacy) as LegacyV1);
+      const migrated = normalizeSave(JSON.parse(legacy) as LegacyV1, autoAccelerateDefault);
       writeSave(migrated);
       return migrated;
     }
-    return blankSave();
+    return blankSave(autoAccelerateDefault);
   } catch {
-    return blankSave();
+    return blankSave(autoAccelerateDefault);
   }
 }
 

@@ -175,6 +175,7 @@ type GameState = {
   volume: number;
   steerSens: number;
   touch: TouchMode;
+  autoAccelerate: boolean;
   difficulty: AiDifficulty;
   screen: MenuScreen;
   flow: MenuFlow;
@@ -211,7 +212,9 @@ type GameState = {
   beginDailyRace: () => void;
   commitRace: (trackId: string, raceTime: number, bestLap: number | null, finishers?: CupFinisher[], extras?: RaceExtras) => void;
   setSettingsOpen: (open: boolean) => void;
-  patchSettings: (partial: Partial<Pick<SaveData["settings"], "quality" | "volume" | "steerSens" | "touch" | "difficulty">>) => void;
+  patchSettings: (
+    partial: Partial<Pick<SaveData["settings"], "quality" | "volume" | "steerSens" | "touch" | "autoAccelerate" | "difficulty">>,
+  ) => void;
   hydrate: (data: SaveData) => void;
   /** Dev preview only. Does not write unlocks into the save. */
   unlockAll: boolean;
@@ -246,6 +249,7 @@ function snapshot(s: GameState): SaveData {
       volume: s.volume,
       steerSens: s.steerSens,
       touch: s.touch,
+      autoAccelerate: s.autoAccelerate,
       difficulty: s.difficulty,
     },
     championship: s.cup,
@@ -258,6 +262,7 @@ function applySave(data: SaveData) {
     volume: data.settings.volume,
     steerSens: data.settings.steerSens,
     touch: data.settings.touch,
+    autoAccelerate: data.settings.autoAccelerate,
     difficulty: data.settings.difficulty,
     selectedVehicle: data.selectedVehicle,
     selectedTrack: data.selectedTrack,
@@ -300,6 +305,7 @@ export const useGame = create<GameState>((set, get) => ({
   volume: defaultSave.settings.volume,
   steerSens: defaultSave.settings.steerSens,
   touch: defaultSave.settings.touch,
+  autoAccelerate: defaultSave.settings.autoAccelerate,
   difficulty: defaultSave.settings.difficulty,
   screen: "title",
   flow: "browse",

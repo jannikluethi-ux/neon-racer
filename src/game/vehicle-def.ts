@@ -480,6 +480,11 @@ export function vehicleById(id: string | undefined): VehicleDefinition {
   return (id && BY_ID.get(id)) || VECTOR;
 }
 
+/** Race number shown on the player's car and its garage preview. */
+export function vehicleRaceNumber(vehicleId: string): string {
+  return ({ vector: "27", vanta: "04", surge: "51", aegis: "88" } as Record<string, string>)[vehicleId] ?? "27";
+}
+
 export function specificForce(def: VehicleDefinition): number {
   return def.peakForce * (REFERENCE_MASS / def.mass);
 }
