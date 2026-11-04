@@ -862,6 +862,19 @@ function stationAt(spec: CarSpec, z: number, field: "y" | "w" | "cab" | "fY"): n
   return catmullField(spec.keys, z, field);
 }
 
+/** Surface height of the authored upper body cross-section at local x/z. */
+function topSurfaceAt(spec: CarSpec, x: number, z: number): number {
+  const width = stationAt(spec, z, "w");
+  const crown = stationAt(spec, z, "y");
+  const fY = stationAt(spec, z, "fY");
+  const roofHalf = clamp(stationAt(spec, z, "cab"), 0.02, width * 0.92);
+  const absX = Math.abs(x);
+  if (absX <= roofHalf) return crown;
+  const u = clamp((absX - roofHalf) / Math.max(0.001, width - roofHalf), 0, 1);
+  const s = 1 - Math.pow(u, 1 / 0.6);
+  return fY + (crown - fY) * Math.pow(s, 0.62);
+}
+
 function detailGeometry(spec: CarSpec, dims: CarDims): Partial<Record<CarRole, THREE.BufferGeometry>> {
   const buckets: Record<CarRole, THREE.BufferGeometry[]> = {
     paint: [],
@@ -982,12 +995,16 @@ function detailGeometry(spec: CarSpec, dims: CarDims): Partial<Record<CarRole, T
 
   // Side intakes ahead of the rear wheels: a framed scoop, not a flat decal.
   for (const side of [-1, 1]) {
-    const scoopX = side * dims.rearW * 0.99;
-    const frame = box(0.04, 0.17, 0.34, scoopX, spec.floor + 0.34, rz + 0.62);
+    const scoopZ = rz + 0.62;
+    const scoopW = stationAt(spec, scoopZ, "w");
+    const scoopXN = 0.82;
+    const scoopY = sideShape(scoopXN, spec.floor, stationAt(spec, scoopZ, "fY")) + 0.014;
+    const scoopX = side * (scoopW * scoopXN + 0.015);
+    const frame = box(0.045, 0.14, 0.34, scoopX, scoopY, scoopZ);
     add("carbon", frame);
-    const mouth = box(0.06, 0.1, 0.24, scoopX - side * 0.03, spec.floor + 0.34, rz + 0.62);
+    const mouth = box(0.02, 0.08, 0.24, scoopX + side * 0.025, scoopY, scoopZ);
     add("dark", mouth);
-    add("accent", box(0.03, 0.02, 0.2, scoopX + side * 0.02, spec.floor + 0.41, rz + 0.62));
+    add("accent", box(0.022, 0.018, 0.2, scoopX + side * 0.026, scoopY + 0.044, scoopZ));
   }
 
   // Front bumper openings.
@@ -999,9 +1016,14 @@ function detailGeometry(spec: CarSpec, dims: CarDims): Partial<Record<CarRole, T
   }
 
   // Bonnet vents.
-  add("dark", box(0.34, 0.03, 0.26, 0, stationAt(spec, fz + 0.1, "y") + 0.02, fz + 0.1));
+  const centerVentZ = fz + 0.1;
+  const centerVentH = 0.014;
+  add("dark", box(0.3, centerVentH, 0.24, 0, topSurfaceAt(spec, 0, centerVentZ) + centerVentH * 0.48, centerVentZ));
   for (const side of [-1, 1]) {
-    add("dark", box(0.14, 0.03, 0.3, side * dims.frontW * 0.52, stationAt(spec, fz - 0.1, "y") + 0.04, fz - 0.16, 0, 0, side * 0.12));
+    const ventX = side * dims.frontW * 0.52;
+    const ventZ = fz - 0.16;
+    const ventH = 0.014;
+    add("dark", box(0.12, ventH, 0.26, ventX, topSurfaceAt(spec, ventX, ventZ) + ventH * 0.48, ventZ, 0, 0, side * 0.1));
   }
 
   // Exhaust tips.

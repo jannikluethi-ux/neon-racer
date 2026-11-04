@@ -9,11 +9,12 @@ function hex(color: number): string {
 
 /** Lightweight SVG previews avoid opening a WebGL context for every garage card. */
 export function CarStage({ def }: { def: VehicleDefinition }) {
-  const paint = hex(def.color);
+  const paint = hex(def.body.paint);
+  const accent = hex(def.body.accent);
   const wide = def.body.body[0] > 1.18;
   const long = def.body.body[2] > 1.12;
   const low = def.body.body[1] < 0.9;
-  const number = def.id === "vector" ? "27" : def.id === "vanta" ? "44" : def.id === "surge" ? "08" : "13";
+  const number = def.id === "vector" ? "27" : def.id === "vanta" ? "04" : def.id === "surge" ? "51" : "88";
   return (
     <div className="stage car-stage" aria-hidden="true">
       <svg viewBox="0 0 360 220" role="presentation">
@@ -39,8 +40,8 @@ export function CarStage({ def }: { def: VehicleDefinition }) {
           <path d="m131 165 18 1m66 0 18-1" stroke="#2ee6ff" strokeWidth="3" strokeLinecap="round" />
           <path d="M84 132v20m192-20v20" stroke="#111820" strokeWidth="16" strokeLinecap="round" />
           <path d="M59 157h242" stroke="#0b0e13" strokeWidth="5" />
-          <path d="M112 119h18m102 0h18" stroke={paint} strokeWidth="7" strokeLinecap="round" opacity=".86" />
-          <path d="M108 175h144" stroke="#d8f8ff" strokeOpacity=".55" strokeWidth="2" />
+          <path d="M112 119h18m102 0h18" stroke={accent} strokeWidth="7" strokeLinecap="round" opacity=".86" />
+          <path d="M108 175h144" stroke={accent} strokeOpacity=".72" strokeWidth="3" />
           <text x="180" y="151" fill="#f8fbff" fontSize="14" fontFamily="Arial Narrow, Arial, sans-serif" fontWeight="900" textAnchor="middle">{number}</text>
         </g>
       </svg>

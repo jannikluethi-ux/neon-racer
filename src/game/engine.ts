@@ -21,6 +21,7 @@ import { PRESENT } from "./tuning";
 import type { CarState } from "./types";
 import { applyContact, driftStateLabel } from "./vehicle";
 import { sampleAt } from "./track";
+import { wheelLayout } from "./car-model";
 import { kerbWeightProfile } from "./kerb";
 import { buildScene, disposeBundle, drawMinimap, syncCar, type CarPaint, type CarVis } from "./visuals";
 import { buildEnvironment, type BuiltEnvironment } from "./environment";
@@ -135,6 +136,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   let renderer: THREE.WebGLRenderer;
   /** Dev-only QA camera: park the view on one car and optionally hold time. */
   let inspect: InspectSpec | null = null;
+  let soloCarIndex: number | null = null;
   let forceDressingVisibleForQa = false;
   /** Copy the live pose into the interpolator after a QA teleport. */
   let snapPose = false;
@@ -249,13 +251,28 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       clearInspect: () => {
         inspect = null;
       },
+      setSoloCar: (index: number | null) => {
+        soloCarIndex = index;
+      },
       carCount: () => sim.cars.length,
+      carIdentity: () => {
+        const car = playerCar(sim);
+        const playerIndex = sim.cars.indexOf(car);
+        const cameraIndex = inspect?.car ?? playerIndex;
+        return {
+          selected: useGame.getState().selectedVehicle,
+          loaded: car.vehicleId,
+          playerIndex,
+          cameraIndex,
+          cameraLoaded: sim.cars[cameraIndex]?.vehicleId ?? null,
+          wheelLayout: wheelLayout(car.vehicleId),
+        };
+      },
       phase: () => sim.phase,
-      /** Park car 0 on the live track. Used by visual QA, not by gameplay. */
+      /** Park the player car on the live track. Used by visual QA, not by gameplay. */
       placeAt: (arc: number, lat: number) => {
         const s = sampleAt(sim.track, arc);
-        const car = sim.cars[0];
-        if (!car) return;
+        const car = playerCar(sim);
         car.x = s.x + s.rx * lat;
         car.z = s.z + s.rz * lat;
         car.yaw = Math.atan2(-s.tx, -s.tz);
@@ -317,6 +334,10 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
         }
         const half = samples[0] ? samples[0].width * 0.5 : 8;
         return { crest, uphill, downhill, transition, kerb, kerbGradient, half, length: sim.track.length };
+      },
+      trackAt: (arc: number) => {
+        const sample = sampleAt(sim.track, arc);
+        return { half: sample.width * 0.5, curvature: sample.curv };
       },
       setQuality: (quality: "low" | "medium" | "high") => {
         useGame.getState().patchSettings({ quality });
@@ -702,6 +723,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       const car = sim.cars[i]!;
       const view = bundle.cars[i];
       if (!view) continue;
+      view.root.visible = soloCarIndex === null || i === soloCarIndex;
       view.headLight.intensity = lamp;
       view.headLight.visible = lamp > 0;
       const vis = shown[i];
@@ -819,7 +841,9 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       const d = inspect.dist ?? 9;
       camera.up.set(0, 1, 0);
       camera.position.set(pose.x - Math.sin(a) * d, pose.y + (inspect.height ?? 2.2), pose.z - Math.cos(a) * d);
-      camera.lookAt(pose.x, pose.y + (inspect.look ?? 0.55), pose.z);
+      const focus = new THREE.Vector3(inspect.focusX ?? 0, inspect.look ?? 0.55, inspect.focusZ ?? 0);
+      bundle.cars[idx]?.root.localToWorld(focus);
+      camera.lookAt(focus);
       const wantFov = inspect.fov ?? 46;
       if (Math.abs(camera.fov - wantFov) > 0.05) {
         camera.fov = wantFov;

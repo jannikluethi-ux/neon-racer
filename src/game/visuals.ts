@@ -145,14 +145,14 @@ function roleFromColor(color: number): string {
   return "player";
 }
 
-function raceNumberFor(role: string): string {
+function raceNumberFor(role: string, vehicleId: string): string {
   if (role === "vex") return "13";
   if (role === "ion") return "44";
   if (role === "nyx") return "08";
-  return "27";
+  return ({ vector: "27", vanta: "04", surge: "51", aegis: "88" } as Record<string, string>)[vehicleId] ?? "27";
 }
 
-function numberTexture(role: string, accent: number): THREE.CanvasTexture {
+function numberTexture(role: string, vehicleId: string, accent: number): THREE.CanvasTexture {
   return canvasTex((g, w, h) => {
     g.clearRect(0, 0, w, h);
     g.fillStyle = "rgba(5, 8, 13, 0.9)";
@@ -163,10 +163,10 @@ function numberTexture(role: string, accent: number): THREE.CanvasTexture {
     g.lineWidth = 6;
     g.stroke();
     g.fillStyle = "#f8fbff";
-    g.font = "900 70px Arial Narrow, Arial, sans-serif";
+    g.font = "900 76px Arial Narrow, Arial, sans-serif";
     g.textAlign = "center";
     g.textBaseline = "middle";
-    g.fillText(raceNumberFor(role), w / 2, h / 2 + 2);
+    g.fillText(raceNumberFor(role, vehicleId), w / 2, h / 2 + 2);
   }, 128, 80);
 }
 
@@ -465,9 +465,9 @@ export function createCarView(color: number, vehicleId: string, rival = false): 
   glow.visible = false;
 
   // Race number plates: rear panel plus one per door.
-  const numberMap = numberTexture(role, look.accent);
+  const numberMap = numberTexture(role, vehicleId, look.accent);
   const numberMat = new THREE.MeshBasicMaterial({ map: numberMap, transparent: true, toneMapped: false });
-  const plateH = 0.34 * dims.numberScale;
+  const plateH = 0.39 * dims.numberScale;
   const rearNumber = new THREE.Mesh(new THREE.PlaneGeometry(plateH * 1.6, plateH), numberMat);
   rearNumber.position.set(0, dims.plateY, dims.tailZ - 0.03);
   rearNumber.rotation.y = Math.PI;
