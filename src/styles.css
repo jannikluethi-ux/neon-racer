@@ -1590,3 +1590,151 @@ input[type="range"] {
 .pause-card .stack {
   margin-top: 0.5rem;
 }
+
+.game-root[data-phase="menu"] .minimap {
+  display: none;
+}
+
+.picker {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.picker-top,
+.picker-dock,
+.chev,
+.stage-hit,
+.view-chips {
+  pointer-events: auto;
+}
+
+.picker-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: max(0.85rem, env(safe-area-inset-top)) max(1.1rem, env(safe-area-inset-right)) 0 max(1.1rem, env(safe-area-inset-left));
+  text-shadow: 0 2px 18px rgb(0 0 0 / 0.85);
+}
+
+.picker-dock {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1.15fr) minmax(16rem, 1fr) auto;
+  gap: 1rem 1.4rem;
+  align-items: end;
+  padding: 1.1rem max(1.2rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(1.2rem, env(safe-area-inset-left));
+  background: linear-gradient(180deg, transparent, rgb(5 8 12 / 0.35) 18%, rgb(5 8 12 / 0.88));
+}
+
+.dock-copy h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(2.6rem, 5vw, 4.6rem);
+  line-height: 0.86;
+  letter-spacing: 0.03em;
+}
+
+.dock-copy p {
+  margin: 0.35rem 0 0;
+  max-width: 38rem;
+  color: var(--color-muted);
+}
+
+.dock-meta {
+  margin: 0.3rem 0 0;
+  color: var(--color-fg);
+  font-size: 0.92rem;
+  letter-spacing: 0.04em;
+}
+
+.class-chip {
+  display: inline-block;
+  margin-left: 0.7rem;
+  padding: 0.12rem 0.45rem 0.05rem;
+  border: 1px solid color-mix(in srgb, var(--color-cyan) 55%, transparent);
+  border-radius: 999px;
+  color: var(--color-cyan);
+  font-size: 0.42em;
+  letter-spacing: 0.16em;
+  vertical-align: 0.45em;
+}
+
+.stat-wide {
+  grid-template-columns: 4.2rem 1fr auto;
+}
+
+.view-chips {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.chip {
+  min-height: 2.4rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgb(8 12 18 / 0.45);
+  color: var(--color-muted);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.chip[aria-pressed="true"] {
+  color: #041016;
+  background: var(--color-cyan);
+}
+
+.chev {
+  position: absolute;
+  top: 42%;
+  z-index: 2;
+  width: 3rem;
+  height: 3rem;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(6 10 16 / 0.55);
+  color: var(--color-fg);
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.chev-left {
+  left: max(0.6rem, env(safe-area-inset-left));
+}
+
+.chev-right {
+  right: max(0.6rem, env(safe-area-inset-right));
+}
+
+.stage-hit {
+  position: absolute;
+  z-index: 1;
+  left: 4.2rem;
+  right: 4.2rem;
+  top: 4.2rem;
+  bottom: 13.5rem;
+  touch-action: none;
+}
+
+@media (max-width: 960px) {
+  .picker-dock {
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+  }
+
+  .dock-copy h2 {
+    font-size: 2.4rem;
+  }
+
+  .stage-hit {
+    bottom: 16rem;
+  }
+}
