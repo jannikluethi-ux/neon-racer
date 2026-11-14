@@ -1105,6 +1105,43 @@ function addTunnelShell(boxes: Batch, parent: THREE.Object3D, track: Track, them
   }
 }
 
+/** A few kind-specific structures, instanced on the batches the rest of the city already uses. */
+function addLandmarks(boxes: Batch, cyl: Batch, track: Track, kind: string): void {
+  const c = centroid(track);
+  const picks: Sample[] = [];
+  let acc = 40;
+  const gap = kind === "coast" ? 70 : kind === "city" ? 140 : 120;
+  for (const s of track.samples) {
+    acc += s.segLen;
+    if (acc < gap) continue;
+    acc = 0;
+    picks.push(s);
+  }
+  for (const s of picks) {
+    const sign = outerSign(s, c);
+    const m = basisOf(s);
+    const q = new THREE.Quaternion().setFromRotationMatrix(m);
+    const out = sign * (s.width * 0.5 + 9);
+    if (kind === "city") {
+      boxes.addLocal(0, s, q, m, out, 1.4, 0, 7.5, 2.6, 16);
+      boxes.addLocal(7, s, q, m, out, 2.9, 0, 7.1, 0.35, 15);
+      boxes.addLocal(4, s, q, m, out, 3.4, 0, 0.35, 0.12, 14, new THREE.Color(0x2ee6ff));
+    } else if (kind === "yard") {
+      cyl.addLocal(0, s, q, m, out, 2.4, 0, 2.6, 4.8, 2.6);
+      cyl.addLocal(2, s, q, m, out, 5, 0, 2.9, 0.45, 2.9);
+      boxes.addLocal(1, s, q, m, out + sign * 3.2, 1.6, 0, 0.35, 3.2, 8);
+    } else if (kind === "coast") {
+      cyl.addLocal(1, s, q, m, out, 2.6, 0, 0.4, 5.2, 0.4);
+      boxes.addLocal(6, s, q, m, out, 5.1, 0, 2.4, 0.4, 2.4);
+      boxes.addLocal(6, s, q, m, out, 4.6, 0.6, 1.6, 0.25, 1.6);
+    } else {
+      cyl.addLocal(0, s, q, m, out, 7, 0, 3.4, 14, 3.4);
+      cyl.addLocal(2, s, q, m, out, 14.2, 0, 4, 0.7, 4);
+      boxes.addLocal(5, s, q, m, out, 3, 6, 8, 0.35, 1.2);
+    }
+  }
+}
+
 export function addScenery(parent: THREE.Object3D, track: Track, theme: TrackTheme): void {
   const kind = theme.kind;
   const rng = mulberry32(theme.citySeed);
@@ -1134,6 +1171,7 @@ export function addScenery(parent: THREE.Object3D, track: Track, theme: TrackThe
   const cyl = new Batch([tank, scrub, pipe], [false, false, false]);
 
   furniture(boxes, track, kind, rng);
+  addLandmarks(boxes, cyl, track, kind);
   if (city) populateCity(boxes, track, theme, rng);
   if (yard) populateYard(boxes, cyl, track, rng);
   if (coast) populateCoast(parent, boxes, cyl, track, theme, rng);

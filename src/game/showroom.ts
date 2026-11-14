@@ -177,6 +177,7 @@ export function createShowroom(renderer: THREE.WebGLRenderer): Showroom {
   const update = (frame: ShowroomFrame) => {
     const dt = Math.min(0.2, Math.max(0, frame.dt));
     clock.t += dt;
+    const lineup = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("lineup") === "1";
     const carsOpen = frame.screen === "cars";
     const tracksOpen = frame.screen === "tracks";
     const venueTarget = tracksOpen ? 1 : 0;
@@ -190,13 +191,13 @@ export function createShowroom(renderer: THREE.WebGLRenderer): Showroom {
     const focusIndex = carsOpen ? wrapIndex(showcase.car, views.length) : selected;
     const spread = carsOpen && showcase.view === "front";
     views.forEach((view, index) => {
-      const delta = spread ? wrapDelta(index, showcase.car, views.length) : index === focusIndex ? 0 : 4;
+      const delta = lineup && carsOpen ? index - (views.length - 1) / 2 : spread ? wrapDelta(index, showcase.car, views.length) : index === focusIndex ? 0 : 4;
       const ad = Math.abs(delta);
-      view.root.visible = spread ? ad < 1.65 : index === focusIndex;
-      const scale = carsOpen ? 1 - Math.min(1, ad) * 0.38 : 1;
+      view.root.visible = lineup && carsOpen ? true : spread ? ad < 1.65 : index === focusIndex;
+      const scale = lineup && carsOpen ? 0.78 : carsOpen ? 1 - Math.min(1, ad) * 0.38 : 1;
       view.root.scale.setScalar(scale);
-      view.root.position.set(carsOpen ? delta * CAR_GAP : 0, 0, 0);
-      view.root.rotation.set(0, carsOpen ? delta * 0.28 : 0, 0);
+      view.root.position.set(carsOpen ? delta * (lineup ? 3.15 : CAR_GAP) : 0, 0, 0);
+      view.root.rotation.set(0, lineup && carsOpen ? Math.PI / 2 : carsOpen ? delta * 0.28 : 0, 0);
       view.headLight.visible = frame.quality !== "low" && ad < 0.45;
       view.headLight.intensity = 2.2;
       if (ad < 0.4 && !frame.reduced) {
@@ -234,7 +235,7 @@ export function createShowroom(renderer: THREE.WebGLRenderer): Showroom {
     const u = venue * venue * (3 - 2 * venue);
     const zoom = showcase.zoom;
     const az = VIEW_AZ[showcase.view] + (frame.reduced || showcase.dragging ? 0 : Math.sin(clock.t * 0.35) * 0.05);
-    const garageDist = (carsOpen ? 8.05 : 8.7) * zoom;
+    const garageDist = (lineup && carsOpen ? 11.5 : carsOpen ? 8.05 : 8.7) * zoom;
     const garageX = Math.sin(az) * garageDist;
     const garageZ = Math.cos(az) * garageDist;
     const garageY = (carsOpen ? 1.72 : 1.78) + showcase.pitch;

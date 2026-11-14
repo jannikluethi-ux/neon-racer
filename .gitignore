@@ -2,7 +2,7 @@ node_modules
 .vercel
 .tanstack
 .grok
-screenshots
+/screenshots/
 artifacts
 attachments
 dist
@@ -15,7 +15,6 @@ android/build/
 *.apk
 *.keystore
 local.properties
-/screenshots/
 /Cars/
 /Intro Video/
 /startup.sh
