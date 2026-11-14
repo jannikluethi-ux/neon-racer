@@ -55,10 +55,16 @@ describe("car silhouettes", () => {
     assert.ok(mesh.surge.length > mesh.vector.length, "the LMP is longer than the GT3");
     assert.ok(mesh.surge.height < 1.05, `the LMP stays low, height ${mesh.surge.height}`);
     assert.ok(mesh.vanta.length < mesh.vector.length - 0.6, "the GT4 is the short car");
-    assert.ok(mesh.vanta.height > mesh.vector.height, "the GT4 cabin is taller than the GT3");
+    assert.ok(mesh.vanta.height < mesh.aegis.height, "the GT4 cabin sits under the TCR roof");
+    assert.ok(mesh.vanta.height < 1.25, `the GT4 is a coupe, height ${mesh.vanta.height}`);
     assert.ok(mesh.aegis.width > mesh.vector.width, "the TCR is the wide car");
-    assert.ok(mesh.aegis.height > 1.1, "the TCR greenhouse stands up");
-    const heights = new Set([mesh.vector.height, mesh.vanta.height, mesh.surge.height, mesh.aegis.height].map((n) => n.toFixed(2)));
+    assert.ok(mesh.aegis.height > 1.2, "the TCR greenhouse stands up");
+    assert.ok(mesh.vector.tris > 1000 && mesh.surge.tris > 1000, "bodies are lofted surfaces");
+    const heights = new Set(
+      [mesh.vector.height, mesh.vanta.height, mesh.surge.height, mesh.aegis.height].map((n) =>
+        n.toFixed(2),
+      ),
+    );
     assert.ok(heights.size >= 3, "the four roofs are not one shared height");
   });
 });
