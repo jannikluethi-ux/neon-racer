@@ -682,26 +682,26 @@ const SPECS: Record<CarId, CarSpec> = {
     tireRear: { r: 0.345, half: 0.15, rimR: 0.245, grooves: 3 },
     rim: { spokes: 7, spokeW: 0.052, spokeT: 0.036, face: 0xdde5ec, barrel: 0xc3ccd4, discR: 0.2, caliper: 0x2ee6ff, lipSteps: 2 },
     keys: [
-      { z: -2.12, y: 0.74, w: 0.88, cab: 0.08, fY: 0.78, zone: "tail" },
-      { z: -1.98, y: 0.84, w: 0.98, cab: 0.12, fY: 0.88, zone: "tail" },
-      { z: -1.78, y: 0.9, w: 1.04, cab: 0.16, fY: 0.92, zone: "deck" },
-      { z: -1.55, y: 0.93, w: 1.07, cab: 0.22, fY: 0.95, zone: "deck" },
-      { z: -1.35, y: 0.94, w: 1.07, cab: 0.3, fY: 0.95, zone: "deck" },
-      { z: -1.1, y: 0.99, w: 1.02, cab: 0.38, fY: 0.93, zone: "glassR" },
-      { z: -0.85, y: 1.07, w: 0.96, cab: 0.48, fY: 0.91, zone: "glassR" },
-      { z: -0.58, y: 1.14, w: 0.9, cab: 0.55, fY: 0.9, zone: "pillarC" },
-      { z: -0.4, y: 1.16, w: 0.88, cab: 0.58, fY: 0.89, zone: "roof" },
-      { z: -0.1, y: 1.17, w: 0.88, cab: 0.59, fY: 0.89, zone: "roof" },
-      { z: 0.14, y: 1.15, w: 0.9, cab: 0.57, fY: 0.89, zone: "roof" },
-      { z: 0.3, y: 1.1, w: 0.92, cab: 0.52, fY: 0.9, zone: "pillarA" },
-      { z: 0.48, y: 1.02, w: 0.94, cab: 0.44, fY: 0.9, zone: "glassF" },
-      { z: 0.7, y: 0.93, w: 0.95, cab: 0.32, fY: 0.9, zone: "glassF" },
-      { z: 0.9, y: 0.86, w: 0.97, cab: 0.16, fY: 0.9, zone: "hood" },
-      { z: 1.15, y: 0.83, w: 1.01, cab: 0.07, fY: 0.89, zone: "hood" },
-      { z: 1.45, y: 0.79, w: 1.0, cab: 0.05, fY: 0.85, zone: "hood" },
-      { z: 1.78, y: 0.72, w: 0.95, cab: 0.04, fY: 0.76, zone: "nose" },
-      { z: 2.02, y: 0.65, w: 0.86, cab: 0.03, fY: 0.68, zone: "nose" },
-      { z: 2.16, y: 0.58, w: 0.72, cab: 0.03, fY: 0.6, zone: "nose" },
+      { z: -2.12, y: 0.62, w: 0.88, cab: 0.06, fY: 0.66, zone: "tail" },
+      { z: -1.98, y: 0.7, w: 0.98, cab: 0.1, fY: 0.74, zone: "tail" },
+      { z: -1.78, y: 0.78, w: 1.04, cab: 0.14, fY: 0.82, zone: "deck" },
+      { z: -1.55, y: 0.82, w: 1.07, cab: 0.18, fY: 0.86, zone: "deck" },
+      { z: -1.35, y: 0.86, w: 1.07, cab: 0.22, fY: 0.9, zone: "deck" },
+      { z: -1.1, y: 1.02, w: 1.02, cab: 0.36, fY: 0.92, zone: "glassR" },
+      { z: -0.85, y: 1.16, w: 0.96, cab: 0.48, fY: 0.9, zone: "glassR" },
+      { z: -0.58, y: 1.24, w: 0.9, cab: 0.56, fY: 0.88, zone: "pillarC" },
+      { z: -0.4, y: 1.26, w: 0.88, cab: 0.58, fY: 0.88, zone: "roof" },
+      { z: -0.1, y: 1.26, w: 0.88, cab: 0.58, fY: 0.88, zone: "roof" },
+      { z: 0.14, y: 1.22, w: 0.9, cab: 0.54, fY: 0.88, zone: "roof" },
+      { z: 0.3, y: 1.08, w: 0.92, cab: 0.42, fY: 0.88, zone: "pillarA" },
+      { z: 0.48, y: 0.92, w: 0.94, cab: 0.28, fY: 0.86, zone: "glassF" },
+      { z: 0.7, y: 0.78, w: 0.95, cab: 0.14, fY: 0.82, zone: "glassF" },
+      { z: 0.9, y: 0.7, w: 0.97, cab: 0.08, fY: 0.78, zone: "hood" },
+      { z: 1.15, y: 0.66, w: 1.01, cab: 0.05, fY: 0.74, zone: "hood" },
+      { z: 1.45, y: 0.62, w: 1.0, cab: 0.04, fY: 0.7, zone: "hood" },
+      { z: 1.78, y: 0.56, w: 0.95, cab: 0.03, fY: 0.62, zone: "nose" },
+      { z: 2.02, y: 0.5, w: 0.86, cab: 0.02, fY: 0.54, zone: "nose" },
+      { z: 2.16, y: 0.44, w: 0.72, cab: 0.02, fY: 0.48, zone: "nose" },
     ],
   },
 
@@ -717,26 +717,26 @@ const SPECS: Record<CarId, CarSpec> = {
     tireRear: { r: 0.335, half: 0.155, rimR: 0.238, grooves: 2 },
     rim: { spokes: 5, spokeW: 0.09, spokeT: 0.05, face: 0x9aa4ae, barrel: 0x8f99a3, discR: 0.192, caliper: 0xff4d24, lipSteps: 2 },
     keys: [
-      { z: -1.96, y: 0.78, w: 0.86, cab: 0.1, fY: 0.8, zone: "tail" },
-      { z: -1.84, y: 0.86, w: 0.98, cab: 0.14, fY: 0.88, zone: "tail" },
-      { z: -1.66, y: 0.9, w: 1.06, cab: 0.18, fY: 0.92, zone: "deck" },
-      { z: -1.45, y: 0.92, w: 1.11, cab: 0.24, fY: 0.94, zone: "deck" },
-      { z: -1.3, y: 0.93, w: 1.12, cab: 0.3, fY: 0.94, zone: "deck" },
-      { z: -1.06, y: 1.0, w: 1.06, cab: 0.4, fY: 0.93, zone: "glassR" },
-      { z: -0.8, y: 1.09, w: 1.0, cab: 0.5, fY: 0.92, zone: "glassR" },
-      { z: -0.52, y: 1.13, w: 0.94, cab: 0.56, fY: 0.91, zone: "pillarC" },
-      { z: -0.34, y: 1.15, w: 0.92, cab: 0.6, fY: 0.9, zone: "roof" },
-      { z: -0.02, y: 1.16, w: 0.92, cab: 0.6, fY: 0.9, zone: "roof" },
-      { z: 0.2, y: 1.14, w: 0.94, cab: 0.58, fY: 0.9, zone: "roof" },
-      { z: 0.34, y: 1.09, w: 0.96, cab: 0.52, fY: 0.91, zone: "pillarA" },
-      { z: 0.5, y: 1.0, w: 0.97, cab: 0.44, fY: 0.92, zone: "glassF" },
-      { z: 0.7, y: 0.9, w: 0.98, cab: 0.3, fY: 0.92, zone: "glassF" },
-      { z: 0.88, y: 0.84, w: 1.0, cab: 0.14, fY: 0.92, zone: "hood" },
-      { z: 1.08, y: 0.8, w: 1.04, cab: 0.07, fY: 0.9, zone: "hood" },
-      { z: 1.34, y: 0.76, w: 1.02, cab: 0.05, fY: 0.84, zone: "hood" },
-      { z: 1.62, y: 0.7, w: 0.96, cab: 0.04, fY: 0.74, zone: "nose" },
-      { z: 1.84, y: 0.64, w: 0.86, cab: 0.03, fY: 0.66, zone: "nose" },
-      { z: 1.96, y: 0.58, w: 0.7, cab: 0.03, fY: 0.6, zone: "nose" },
+      { z: -1.96, y: 0.92, w: 0.86, cab: 0.12, fY: 0.88, zone: "tail" },
+      { z: -1.84, y: 0.98, w: 0.98, cab: 0.16, fY: 0.94, zone: "tail" },
+      { z: -1.66, y: 1.02, w: 1.06, cab: 0.22, fY: 0.98, zone: "deck" },
+      { z: -1.45, y: 1.06, w: 1.11, cab: 0.3, fY: 1.0, zone: "deck" },
+      { z: -1.3, y: 1.08, w: 1.12, cab: 0.36, fY: 1.02, zone: "deck" },
+      { z: -1.06, y: 1.2, w: 1.06, cab: 0.52, fY: 1.02, zone: "glassR" },
+      { z: -0.8, y: 1.32, w: 1.0, cab: 0.62, fY: 1.0, zone: "glassR" },
+      { z: -0.52, y: 1.36, w: 0.94, cab: 0.66, fY: 0.98, zone: "pillarC" },
+      { z: -0.34, y: 1.38, w: 0.92, cab: 0.68, fY: 0.98, zone: "roof" },
+      { z: -0.02, y: 1.38, w: 0.92, cab: 0.68, fY: 0.98, zone: "roof" },
+      { z: 0.2, y: 1.34, w: 0.94, cab: 0.64, fY: 0.98, zone: "roof" },
+      { z: 0.34, y: 1.22, w: 0.96, cab: 0.52, fY: 0.98, zone: "pillarA" },
+      { z: 0.5, y: 1.08, w: 0.97, cab: 0.36, fY: 0.98, zone: "glassF" },
+      { z: 0.7, y: 0.96, w: 0.98, cab: 0.18, fY: 0.96, zone: "hood" },
+      { z: 0.88, y: 0.9, w: 1.0, cab: 0.1, fY: 0.94, zone: "hood" },
+      { z: 1.08, y: 0.86, w: 1.04, cab: 0.06, fY: 0.92, zone: "hood" },
+      { z: 1.34, y: 0.84, w: 1.02, cab: 0.04, fY: 0.88, zone: "nose" },
+      { z: 1.62, y: 0.82, w: 0.96, cab: 0.03, fY: 0.84, zone: "nose" },
+      { z: 1.84, y: 0.8, w: 0.86, cab: 0.03, fY: 0.82, zone: "nose" },
+      { z: 1.96, y: 0.78, w: 0.7, cab: 0.02, fY: 0.8, zone: "nose" },
     ],
   },
 
@@ -752,26 +752,26 @@ const SPECS: Record<CarId, CarSpec> = {
     tireRear: { r: 0.34, half: 0.16, rimR: 0.242, grooves: 3 },
     rim: { spokes: 10, spokeW: 0.03, spokeT: 0.024, face: 0xe8eef4, barrel: 0xb9c2ca, discR: 0.205, caliper: 0xffe14a, lipSteps: 3 },
     keys: [
-      { z: -2.4, y: 0.7, w: 0.86, cab: 0.1, fY: 0.74, zone: "tail" },
-      { z: -2.24, y: 0.8, w: 0.98, cab: 0.14, fY: 0.84, zone: "tail" },
-      { z: -2.0, y: 0.86, w: 1.06, cab: 0.2, fY: 0.9, zone: "deck" },
-      { z: -1.72, y: 0.9, w: 1.1, cab: 0.26, fY: 0.93, zone: "deck" },
-      { z: -1.5, y: 0.91, w: 1.1, cab: 0.32, fY: 0.94, zone: "deck" },
-      { z: -1.2, y: 0.94, w: 1.06, cab: 0.42, fY: 0.93, zone: "glassR" },
-      { z: -0.9, y: 1.0, w: 1.0, cab: 0.5, fY: 0.9, zone: "glassR" },
-      { z: -0.6, y: 1.04, w: 0.94, cab: 0.54, fY: 0.88, zone: "pillarC" },
-      { z: -0.4, y: 1.05, w: 0.9, cab: 0.56, fY: 0.87, zone: "roof" },
-      { z: -0.08, y: 1.06, w: 0.9, cab: 0.56, fY: 0.87, zone: "roof" },
-      { z: 0.18, y: 1.04, w: 0.92, cab: 0.54, fY: 0.87, zone: "roof" },
-      { z: 0.34, y: 1.0, w: 0.94, cab: 0.5, fY: 0.88, zone: "pillarA" },
-      { z: 0.54, y: 0.94, w: 0.96, cab: 0.42, fY: 0.88, zone: "glassF" },
-      { z: 0.78, y: 0.86, w: 0.98, cab: 0.3, fY: 0.88, zone: "glassF" },
-      { z: 1.0, y: 0.8, w: 1.0, cab: 0.14, fY: 0.88, zone: "hood" },
-      { z: 1.32, y: 0.76, w: 1.03, cab: 0.07, fY: 0.88, zone: "hood" },
-      { z: 1.66, y: 0.72, w: 1.02, cab: 0.05, fY: 0.83, zone: "hood" },
-      { z: 2.0, y: 0.66, w: 0.96, cab: 0.04, fY: 0.74, zone: "nose" },
-      { z: 2.28, y: 0.6, w: 0.84, cab: 0.03, fY: 0.66, zone: "nose" },
-      { z: 2.44, y: 0.54, w: 0.64, cab: 0.03, fY: 0.58, zone: "nose" },
+      { z: -2.4, y: 0.52, w: 0.86, cab: 0.06, fY: 0.58, zone: "tail" },
+      { z: -2.24, y: 0.56, w: 0.98, cab: 0.08, fY: 0.62, zone: "tail" },
+      { z: -2.0, y: 0.6, w: 1.06, cab: 0.1, fY: 0.68, zone: "deck" },
+      { z: -1.72, y: 0.62, w: 1.1, cab: 0.12, fY: 0.72, zone: "deck" },
+      { z: -1.5, y: 0.64, w: 1.1, cab: 0.16, fY: 0.74, zone: "deck" },
+      { z: -1.2, y: 0.7, w: 1.06, cab: 0.22, fY: 0.72, zone: "glassR" },
+      { z: -0.9, y: 0.82, w: 1.0, cab: 0.3, fY: 0.7, zone: "glassR" },
+      { z: -0.6, y: 0.9, w: 0.94, cab: 0.34, fY: 0.68, zone: "pillarC" },
+      { z: -0.4, y: 0.92, w: 0.9, cab: 0.36, fY: 0.66, zone: "roof" },
+      { z: -0.08, y: 0.93, w: 0.9, cab: 0.36, fY: 0.66, zone: "roof" },
+      { z: 0.18, y: 0.9, w: 0.92, cab: 0.32, fY: 0.66, zone: "roof" },
+      { z: 0.34, y: 0.82, w: 0.94, cab: 0.24, fY: 0.66, zone: "pillarA" },
+      { z: 0.54, y: 0.72, w: 0.96, cab: 0.16, fY: 0.66, zone: "glassF" },
+      { z: 0.78, y: 0.62, w: 0.98, cab: 0.08, fY: 0.66, zone: "hood" },
+      { z: 1.0, y: 0.56, w: 1.0, cab: 0.05, fY: 0.64, zone: "hood" },
+      { z: 1.32, y: 0.52, w: 1.03, cab: 0.04, fY: 0.62, zone: "hood" },
+      { z: 1.66, y: 0.48, w: 1.02, cab: 0.03, fY: 0.58, zone: "nose" },
+      { z: 2.0, y: 0.44, w: 0.96, cab: 0.02, fY: 0.52, zone: "nose" },
+      { z: 2.28, y: 0.4, w: 0.84, cab: 0.02, fY: 0.46, zone: "nose" },
+      { z: 2.44, y: 0.36, w: 0.64, cab: 0.02, fY: 0.4, zone: "nose" },
     ],
   },
 
@@ -787,26 +787,26 @@ const SPECS: Record<CarId, CarSpec> = {
     tireRear: { r: 0.35, half: 0.15, rimR: 0.25, grooves: 4 },
     rim: { spokes: 6, spokeW: 0.07, spokeT: 0.045, face: 0xc8a06a, barrel: 0xb08c58, discR: 0.215, caliper: 0x9fd4ff, lipSteps: 2 },
     keys: [
-      { z: -2.14, y: 0.8, w: 0.96, cab: 0.1, fY: 0.84, zone: "tail" },
-      { z: -2.0, y: 0.88, w: 1.06, cab: 0.14, fY: 0.9, zone: "tail" },
-      { z: -1.8, y: 0.92, w: 1.14, cab: 0.18, fY: 0.94, zone: "deck" },
-      { z: -1.56, y: 0.95, w: 1.18, cab: 0.24, fY: 0.96, zone: "deck" },
-      { z: -1.32, y: 0.96, w: 1.18, cab: 0.32, fY: 0.96, zone: "deck" },
-      { z: -1.05, y: 1.05, w: 1.14, cab: 0.42, fY: 0.95, zone: "glassR" },
-      { z: -0.8, y: 1.12, w: 1.1, cab: 0.5, fY: 0.94, zone: "glassR" },
-      { z: -0.54, y: 1.18, w: 1.04, cab: 0.56, fY: 0.93, zone: "pillarC" },
-      { z: -0.36, y: 1.21, w: 1.02, cab: 0.6, fY: 0.93, zone: "roof" },
-      { z: -0.04, y: 1.22, w: 1.02, cab: 0.6, fY: 0.93, zone: "roof" },
-      { z: 0.2, y: 1.2, w: 1.04, cab: 0.58, fY: 0.93, zone: "roof" },
-      { z: 0.34, y: 1.14, w: 1.06, cab: 0.54, fY: 0.94, zone: "pillarA" },
-      { z: 0.52, y: 1.06, w: 1.08, cab: 0.46, fY: 0.94, zone: "glassF" },
-      { z: 0.74, y: 0.95, w: 1.09, cab: 0.34, fY: 0.94, zone: "glassF" },
-      { z: 0.94, y: 0.86, w: 1.1, cab: 0.16, fY: 0.94, zone: "hood" },
-      { z: 1.2, y: 0.83, w: 1.13, cab: 0.08, fY: 0.93, zone: "hood" },
-      { z: 1.5, y: 0.8, w: 1.12, cab: 0.05, fY: 0.9, zone: "hood" },
-      { z: 1.82, y: 0.74, w: 1.06, cab: 0.04, fY: 0.8, zone: "nose" },
-      { z: 2.06, y: 0.68, w: 0.98, cab: 0.03, fY: 0.72, zone: "nose" },
-      { z: 2.2, y: 0.6, w: 0.8, cab: 0.03, fY: 0.64, zone: "nose" },
+      { z: -2.14, y: 0.96, w: 0.96, cab: 0.22, fY: 0.92, zone: "tail" },
+      { z: -2.0, y: 1.02, w: 1.06, cab: 0.28, fY: 0.98, zone: "tail" },
+      { z: -1.8, y: 1.08, w: 1.14, cab: 0.36, fY: 1.04, zone: "deck" },
+      { z: -1.56, y: 1.12, w: 1.18, cab: 0.42, fY: 1.08, zone: "deck" },
+      { z: -1.32, y: 1.14, w: 1.18, cab: 0.5, fY: 1.1, zone: "deck" },
+      { z: -1.05, y: 1.2, w: 1.14, cab: 0.62, fY: 1.12, zone: "glassR" },
+      { z: -0.8, y: 1.24, w: 1.1, cab: 0.72, fY: 1.14, zone: "glassR" },
+      { z: -0.54, y: 1.26, w: 1.04, cab: 0.78, fY: 1.16, zone: "pillarC" },
+      { z: -0.36, y: 1.26, w: 1.02, cab: 0.78, fY: 1.16, zone: "roof" },
+      { z: -0.04, y: 1.26, w: 1.02, cab: 0.78, fY: 1.16, zone: "roof" },
+      { z: 0.2, y: 1.26, w: 1.04, cab: 0.76, fY: 1.16, zone: "roof" },
+      { z: 0.34, y: 1.22, w: 1.06, cab: 0.7, fY: 1.14, zone: "pillarA" },
+      { z: 0.52, y: 1.16, w: 1.08, cab: 0.58, fY: 1.12, zone: "glassF" },
+      { z: 0.74, y: 1.08, w: 1.09, cab: 0.4, fY: 1.08, zone: "glassF" },
+      { z: 0.94, y: 1.02, w: 1.1, cab: 0.22, fY: 1.04, zone: "hood" },
+      { z: 1.2, y: 0.98, w: 1.13, cab: 0.12, fY: 1.0, zone: "hood" },
+      { z: 1.5, y: 0.94, w: 1.12, cab: 0.06, fY: 0.96, zone: "hood" },
+      { z: 1.82, y: 0.9, w: 1.06, cab: 0.04, fY: 0.92, zone: "nose" },
+      { z: 2.06, y: 0.86, w: 0.98, cab: 0.03, fY: 0.88, zone: "nose" },
+      { z: 2.2, y: 0.82, w: 0.8, cab: 0.03, fY: 0.84, zone: "nose" },
     ],
   },
 };
@@ -1045,15 +1045,46 @@ function detailGeometry(spec: CarSpec, dims: CarDims): Partial<Record<CarRole, T
   }
 
   // Headlight housings and lenses, seated on the leading edge of the bonnet.
+  // Each class gets its own lamp proportion: LMP slits, GT3 blades, GT4 stacks, TCR blocks.
+  const slit = spec.id === "surge";
+  const stack = spec.id === "vanta";
+  const block = spec.id === "aegis";
   for (const side of [-1, 1]) {
     const lampX = side * dims.lampX;
-    add("dark", box(dims.lampW, 0.1, 0.14, lampX, dims.lampY, dims.lampZ, -0.16, side * -0.1, side * -0.06));
-    add("lamp", box(dims.lampW * 0.8, 0.045, 0.1, lampX, dims.lampY + 0.03, dims.lampZ + 0.02, -0.16, side * -0.1, side * -0.06));
-    // Rear light clusters set into the tail panel.
-    add("dark", box(dims.tailW, 0.11, 0.08, side * dims.rearW * 0.58, dims.tailY, dims.tailZLamp - 0.02, 0, side * 0.14));
-    add("tail", box(dims.tailW * 0.8, 0.05, 0.06, side * dims.rearW * 0.58, dims.tailY + 0.01, dims.tailZLamp - 0.05, 0, side * 0.14));
+    const lampH = slit ? 0.045 : stack ? 0.16 : block ? 0.09 : 0.055;
+    const lensH = slit ? 0.022 : stack ? 0.1 : block ? 0.05 : 0.028;
+    add("dark", box(dims.lampW, lampH, 0.14, lampX, dims.lampY, dims.lampZ, slit ? -0.08 : -0.16, side * -0.1, side * -0.06));
+    add("lamp", box(dims.lampW * 0.82, lensH, 0.1, lampX, dims.lampY + lensH * 0.4, dims.lampZ + 0.02, slit ? -0.08 : -0.16, side * -0.1, side * -0.06));
+    if (stack) {
+      add("lamp", box(dims.lampW * 0.55, 0.04, 0.08, lampX, dims.lampY + 0.07, dims.lampZ + 0.03, -0.2, side * -0.08));
+    }
+    const tailH = slit ? 0.045 : block ? 0.14 : stack ? 0.16 : 0.07;
+    const tailX = side * dims.rearW * (slit ? 0.42 : block ? 0.55 : 0.58);
+    add("dark", box(dims.tailW, tailH + 0.04, 0.08, tailX, dims.tailY, dims.tailZLamp - 0.02, 0, side * (slit ? 0.06 : 0.14)));
+    add("tail", box(dims.tailW * 0.82, tailH, 0.06, tailX, dims.tailY + 0.01, dims.tailZLamp - 0.05, 0, side * (slit ? 0.06 : 0.14)));
+    if (block) {
+      add("tail", box(dims.tailW * 0.7, 0.03, 0.05, tailX, dims.tailY + 0.08, dims.tailZLamp - 0.06, 0, side * 0.14));
+    }
   }
-  add("tail", box(dims.rearW * 0.5, 0.04, 0.05, 0, dims.tailY + 0.07, dims.tailZLamp - 0.05));
+  if (!slit) add("tail", box(dims.rearW * (block ? 0.7 : 0.35), 0.035, 0.05, 0, dims.tailY + (block ? 0.02 : 0.07), dims.tailZLamp - 0.05));
+
+  if (spec.id === "surge") {
+    add("glass", box(0.55, 0.1, 0.85, 0, dims.roofY + 0.02, -0.08));
+    add("dark", box(0.06, 0.16, 0.9, 0.26, dims.roofY - 0.02, -0.08));
+    add("dark", box(0.06, 0.16, 0.9, -0.26, dims.roofY - 0.02, -0.08));
+    add("carbon", box(0.16, 0.04, 0.7, 0, dims.roofY + 0.08, 0.7));
+  } else if (spec.id === "vanta") {
+    const bulgeZ = spec.frontAxleZ + 0.05;
+    add("paint", box(0.34, 0.07, 0.48, 0, topSurfaceAt(spec, 0, bulgeZ) + 0.02, bulgeZ));
+    add("dark", box(0.42, 0.1, 0.06, 0, spec.floor + 0.34, dims.tipZ - 0.04));
+  } else if (spec.id === "aegis") {
+    add("carbon", box(dims.halfWidth * 1.55, 0.045, 0.22, 0, dims.roofY + 0.015, -0.85));
+    add("dark", box(dims.halfWidth * 1.35, 0.1, 0.07, 0, spec.floor + 0.28, dims.tipZ - 0.03));
+    add("accent", box(dims.halfWidth * 1.7, 0.015, 0.04, 0, dims.beltY, 0.15));
+  } else {
+    add("dark", box(0.62, 0.08, 0.05, 0, spec.floor + 0.26, dims.tipZ - 0.03));
+    add("carbon", box(0.22, 0.02, 0.55, 0, topSurfaceAt(spec, 0, 1.2) + 0.01, 1.2));
+  }
 
   const out: Partial<Record<CarRole, THREE.BufferGeometry>> = {};
   for (const role of Object.keys(buckets) as CarRole[]) {
@@ -1109,13 +1140,13 @@ function dimsFor(spec: CarSpec): CarDims {
     rearW,
     frontAxleZ: spec.frontAxleZ,
     rearAxleZ: spec.rearAxleZ,
-    lampY: stationAt(spec, lampZ, "y") + 0.01,
+    lampY: stationAt(spec, lampZ, "y") + (isLong ? -0.02 : isShort ? 0.04 : 0.01),
     lampZ,
-    lampW: isWide ? 0.34 : isShort ? 0.26 : 0.3,
-    lampX: stationAt(spec, lampZ, "w") * 0.52,
+    lampW: isLong ? 0.16 : isWide ? 0.42 : isShort ? 0.2 : 0.28,
+    lampX: stationAt(spec, lampZ, "w") * (isLong ? 0.32 : isWide ? 0.64 : isShort ? 0.55 : 0.46),
     tailY: stationAt(spec, tailZ + 0.05, "y") - 0.11,
     tailZLamp: tailZ - 0.01,
-    tailW: isWide ? 0.44 : isShort ? 0.36 : 0.4,
+    tailW: isLong ? 0.2 : isWide ? 0.52 : isShort ? 0.26 : 0.36,
     mirrorY: beltY + 0.04,
     mirrorZ: 0.42,
     mirrorX: stationAt(spec, 0.42, "w") * 0.86,
