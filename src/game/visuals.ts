@@ -8,6 +8,7 @@ import { bodyWidthAt, buildCarGeometry, type CarDims, type CarRole } from "./car
 import { DECAL_CLEARANCE } from "./contact";
 import { vehicleById, vehicleRaceNumber } from "./vehicle-def";
 import { finishPaint } from "./vehicle-paint";
+import { useGame } from "./store";
 
 /** One wheel: steer pivot, spinning hub and the contact patch decal under it. */
 export type WheelRig = {
@@ -274,9 +275,17 @@ function carbonWeave(): THREE.CanvasTexture {
 function roleMaterial(role: CarRole, look: { body: THREE.Color; accent: number; hero: boolean }): THREE.Material {
   switch (role) {
     case "paint":
-      // Metallic automotive paint: the body colour has to survive the env
-      // reflection, so metalness stays moderate and the clearcoat carries the
-      // shine instead of the base layer going mirror-silver.
+      // Metallic automotive paint. Low quality drops the clearcoat layer.
+      if (useGame.getState().quality === "low") {
+        return new THREE.MeshStandardMaterial({
+          color: look.body,
+          roughness: 0.46,
+          metalness: 0.32,
+          envMapIntensity: 0.35,
+          emissive: look.accent,
+          emissiveIntensity: 0.02,
+        });
+      }
       return new THREE.MeshPhysicalMaterial({
         color: look.body,
         roughness: 0.34,
@@ -300,11 +309,11 @@ function roleMaterial(role: CarRole, look: { body: THREE.Color; accent: number; 
     }
     case "glass":
       return new THREE.MeshPhysicalMaterial({
-        color: new THREE.Color(look.body).lerp(new THREE.Color(0x04060a), 0.86),
-        roughness: 0.06,
-        metalness: 0.15,
+        color: new THREE.Color(look.body).lerp(new THREE.Color(0x101820), 0.72),
+        roughness: 0.08,
+        metalness: 0.12,
         transparent: true,
-        opacity: 0.88,
+        opacity: 0.94,
         clearcoat: 1,
         clearcoatRoughness: 0.05,
         envMapIntensity: 1.0,
@@ -467,8 +476,8 @@ export function createCarView(color: number, vehicleId: string, rival = false): 
   chassis.add(rearNumber);
   for (const side of [-1, 1]) {
     const sideNumber = new THREE.Mesh(new THREE.PlaneGeometry(plateH * 1.5, plateH * 0.86), numberMat.clone());
-    const x = bodyWidthAt(vehicleId, -0.3) * 0.955;
-    sideNumber.position.set(side * x, dims.beltY - 0.14, -0.34);
+    const x = bodyWidthAt(vehicleId, -0.3) * 0.72;
+    sideNumber.position.set(side * x, dims.beltY - 0.02, -0.2);
     sideNumber.rotation.y = side * Math.PI * 0.5;
     chassis.add(sideNumber);
   }

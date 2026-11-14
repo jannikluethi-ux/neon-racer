@@ -129,6 +129,7 @@ export function NeonRacer() {
   const touchMode = useGame((s) => s.touch);
   const [engineError, setEngineError] = useState<string | null>(null);
   const [introOpen, setIntroOpen] = useState(false);
+  const [studio, setStudio] = useState(false);
 
   // Escape / P toggle pause during a race; auto-pause when the tab is hidden.
   useEffect(() => {
@@ -158,7 +159,9 @@ export function NeonRacer() {
       setIntroOpen(false);
     }
     if (import.meta.env.DEV) {
-      const flag = new URLSearchParams(window.location.search).get("unlock");
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("compare") === "1") setStudio(true);
+      const flag = params.get("unlock");
       if (flag === "0") useGame.getState().setUnlockAll(false);
       else if (flag === "1") useGame.getState().setUnlockAll(true);
     }
@@ -207,8 +210,9 @@ export function NeonRacer() {
   const rootClass = `game-root${touchMode === "on" ? " touch-on" : ""}${touchMode === "off" ? " touch-off" : ""}`;
 
   return (
-    <div className={rootClass} data-phase={phase}>
+    <div className={rootClass} data-phase={phase} data-compare={studio ? "1" : "0"}>
       <canvas ref={canvasRef} className="game-canvas" />
+      {studio ? null : (<>
       {engineError && (
         <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",backgroundColor:"rgba(0,0,0,0.85)",color:"#eee",zIndex:2147483647,padding:20,fontFamily:"system-ui,sans-serif",textAlign:"center"}}>
           <div>
@@ -261,6 +265,7 @@ export function NeonRacer() {
       <canvas ref={miniRef} className="minimap" width={288} height={216} />
       <TouchControls />
       {introOpen && <IntroOverlay onClose={closeIntro} />}
+      </>)}
     </div>
   );
 }

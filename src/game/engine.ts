@@ -26,6 +26,7 @@ import { kerbWeightProfile } from "./kerb";
 import { buildScene, disposeBundle, drawMinimap, syncCar, type CarPaint, type CarVis } from "./visuals";
 import { buildEnvironment, type BuiltEnvironment } from "./environment";
 import { createShowroom, type Showroom } from "./showroom";
+import { createCompareScene, type CompareHandle } from "./compare-scene";
 import { themeFor } from "./track-def";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
@@ -178,6 +179,10 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   bindEnv(padBundle.scene);
   const camera = new THREE.PerspectiveCamera(62, 1, 0.2, 2800);
   let showroom: Showroom | null = null;
+  const compare: CompareHandle | null =
+    import.meta.env.DEV && new URLSearchParams(window.location.search).get("compare") === "1"
+      ? createCompareScene(renderer)
+      : null;
   const composer = new EffectComposer(renderer);
   const renderPass = new RenderPass(bundle.scene, camera);
   const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.48, 0.52, 0.78);
@@ -595,6 +600,10 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   const loop = (stamp: number) => {
     if (dead) return;
     raf = requestAnimationFrame(loop);
+    if (compare) {
+      compare.render();
+      return;
+    }
     clock.update(stamp);
     const frameDt = Math.min(0.05, clock.getDelta());
     const now = clock.getElapsed();
@@ -937,6 +946,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     raceEnv.dispose();
     padEnv.dispose();
     showroom?.dispose();
+    compare?.dispose();
     composer.dispose();
     renderer.dispose();
   };
