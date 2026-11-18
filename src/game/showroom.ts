@@ -153,7 +153,7 @@ export function createShowroom(renderer: THREE.WebGLRenderer): Showroom {
   const cars = new THREE.Group();
   scene.add(cars);
   const views: CarView[] = VEHICLES.map((def) => {
-    const view = createCarView(def.color, def.id, false);
+    const view = createCarView(def.color, def.id, false, true);
     view.paint.envMapIntensity = 1.05;
     view.paint.clearcoatRoughness = 0.06;
     view.root.position.set(0, 0, 0);

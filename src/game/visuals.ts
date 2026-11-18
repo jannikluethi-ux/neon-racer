@@ -356,7 +356,7 @@ function roleMaterial(role: CarRole, look: { body: THREE.Color; accent: number; 
   }
 }
 
-export function createCarView(color: number, vehicleId: string, rival = false): CarView {
+export function createCarView(color: number, vehicleId: string, rival = false, presentation = false): CarView {
   const def = vehicleById(vehicleId);
   const role = rival ? roleFromColor(color) : "player";
   // Rivals keep their own livery colour tinted over the factory paint, so the
@@ -388,7 +388,13 @@ export function createCarView(color: number, vehicleId: string, rival = false): 
     return mat;
   };
   const real = hasRealCar(vehicleId)
-    ? instantiateRealCar(vehicleId, { body: look.body, accent: look.accent, hero: look.hero, quality: useGame.getState().quality })
+    ? instantiateRealCar(vehicleId, {
+        body: look.body,
+        accent: look.accent,
+        hero: look.hero,
+        quality: useGame.getState().quality,
+        presentation,
+      })
     : null;
   const brakeMat = real ? real.brake : (materialFor("tail") as THREE.MeshStandardMaterial);
   const paint = real ? real.paint : (materialFor("paint") as THREE.MeshPhysicalMaterial);
