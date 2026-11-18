@@ -10,4 +10,8 @@ These files are the visual bodies for three cars. Surge stays a procedural model
 
 Author: tevy. Commercial use, modification, and redistribution are allowed. Attribution is not required.
 
-The GLBs are the publisher's LOD1 and LOD2 builds (meshopt geometry, KTX2 textures). Race splitters, skirts, and wings on Vanta and Aegis are modelled in the game on top of these bodies. Physics, wheel positions, and collision are not taken from the files.
+The GLB files on disk are the publisher's LOD1 and LOD2 builds (meshopt geometry, KTX2 textures). They are not rewritten. Physics, wheel positions, and collision are not taken from the files.
+
+Race splitters, sills, and wings on Vanta and Aegis are original parts modelled in the game and parented to the imported body. The sill pieces follow the rocker between the wheel arches. An earlier build hung them on the body's bounding box, which includes the mirrors, and those pieces showed up as two black squares beside Aegis's rear tyres.
+
+Vector's silhouette is changed when the model loads. `editVectorMesh` copies the quantized positions into plain floats, then moves the nose and hood vertices in world space: the nose is shortened and stood up, and a low centre spine is added on the hood. The stock wing is hidden, the named front-lamp triangles are dropped, and morph targets on those meshes are cleared so the edited base mesh is what renders. Original parts added in code are a GT3 wing on two swan-neck pylons, endplates, a rear diffuser, and a full-width tail lamp bar. No manufacturer names or badges are added. The base mesh stays CC0. The added parts are original to Neon Racer.
