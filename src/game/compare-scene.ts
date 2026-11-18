@@ -12,19 +12,21 @@ import { createCarView, type CarView } from "./visuals";
 const GAP = 6.6;
 
 const BOUNDS: Record<string, { z0: number; z1: number; halfW: number; h: number }> = {
-  vector: { z0: -2.4, z1: 2.28, halfW: 1.16, h: 1.22 },
-  vanta: { z0: -1.78, z1: 1.66, halfW: 1.2, h: 1.12 },
+  vector: { z0: -2.4, z1: 2.2, halfW: 1.28, h: 1.28 },
+  vanta: { z0: -2.4, z1: 2.15, halfW: 1.32, h: 1.45 },
   surge: { z0: -2.62, z1: 2.55, halfW: 1.2, h: 1.02 },
-  aegis: { z0: -2.02, z1: 2.0, halfW: 1.26, h: 1.4 },
+  aegis: { z0: -2.5, z1: 2.3, halfW: 1.4, h: 1.7 },
 };
 
 type ShotKind = "side" | "front34" | "rear34" | "front" | "side1" | "rear" | "wing";
 
 function parseShot(shot: string): { kind: ShotKind; car: string | null } {
-  if (shot === "side" || shot === "front34" || shot === "rear34") return { kind: shot, car: null };
+  if (shot === "side" || shot === "front" || shot === "rear" || shot === "front34" || shot === "rear34") {
+    return { kind: shot, car: null };
+  }
   const [car, view] = shot.split("-");
   if (!car || !BOUNDS[car]) return { kind: "side", car: null };
-  if (view === "front34") return { kind: "front34", car };
+  if (view === "front34" || view === "rear34") return { kind: view, car };
   if (view === "wing") return { kind: "wing", car };
   if (view === "front" || view === "side" || view === "rear") {
     return { kind: view === "side" ? "side1" : view, car };
@@ -88,7 +90,7 @@ export function createCompareScene(renderer: THREE.WebGLRenderer): CompareHandle
   const scratch = new THREE.Vector3();
 
   const place = (kind: ShotKind, only: string | null) => {
-    const lineup = !only && (kind === "side" || kind === "front34" || kind === "rear34");
+    const lineup = !only && (kind === "side" || kind === "front" || kind === "rear" || kind === "front34" || kind === "rear34");
     views.forEach((entry, index) => {
       const show = lineup || entry.id === only;
       entry.view.root.visible = show;

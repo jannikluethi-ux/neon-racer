@@ -4,7 +4,8 @@ import type { Gate, Sample, Track } from "./track";
 import { sampleAt } from "./track";
 import { themeFor, type TrackTheme } from "./track-def";
 import { buildRoadSurfaces, type RoadSurfaces } from "./road-surface";
-import { bodyWidthAt, buildCarGeometry, type CarDims, type CarRole } from "./car-model";
+import { bodyWidthAt, buildCarGeometry, type CarDims, type CarGeometry, type CarRole } from "./car-model";
+import { hasRealCar, instantiateRealCar, isSharedAsset, type CarCorner } from "./car-assets";
 import { DECAL_CLEARANCE } from "./contact";
 import { vehicleById, vehicleRaceNumber } from "./vehicle-def";
 import { finishPaint } from "./vehicle-paint";
@@ -38,6 +39,8 @@ export type CarView = {
 	tailLight: THREE.PointLight;
 	boostLight: THREE.PointLight;
 	hero: boolean;
+	/** Imported body, when this car is a real model. Null on the procedural prototype. */
+	bodyLod: THREE.LOD | null;
 	/** Front/rear visual suspension travel (m, negative = droop). */
 	susp: [number, number];
 	suspVel: [number, number];
@@ -384,61 +387,82 @@ export function createCarView(color: number, vehicleId: string, rival = false): 
     }
     return mat;
   };
-  const brakeMat = materialFor("tail") as THREE.MeshStandardMaterial;
-  const paint = materialFor("paint") as THREE.MeshPhysicalMaterial;
+  const real = hasRealCar(vehicleId)
+    ? instantiateRealCar(vehicleId, { body: look.body, accent: look.accent, hero: look.hero, quality: useGame.getState().quality })
+    : null;
+  const brakeMat = real ? real.brake : (materialFor("tail") as THREE.MeshStandardMaterial);
+  const paint = real ? real.paint : (materialFor("paint") as THREE.MeshPhysicalMaterial);
 
-  for (const role of Object.keys(built.parts) as CarRole[]) {
-    const geo = built.parts[role];
-    if (!geo) continue;
-    const mesh = new THREE.Mesh(geo, materialFor(role));
-    mesh.name = role;
-    mesh.castShadow = role !== "well";
-    chassis.add(mesh);
+  if (real) {
+    chassis.add(real.lod);
+    disposeUnusedBody(built);
+  } else {
+    for (const role of Object.keys(built.parts) as CarRole[]) {
+      const geo = built.parts[role];
+      if (!geo) continue;
+      const mesh = new THREE.Mesh(geo, materialFor(role));
+      mesh.name = role;
+      mesh.castShadow = role !== "well";
+      chassis.add(mesh);
+    }
   }
 
   // Wheels: pivot (steer + suspension anchor) -> spin (rotation), with the
   // caliper on the pivot so it stays with the upright while the disc turns.
   const rigs: WheelRig[] = [];
-  const wheelMat = new THREE.MeshStandardMaterial({
-    color: 0x141519,
-    map: tireTexture(),
-    roughness: 0.94,
-    metalness: 0.0,
-    envMapIntensity: 0.35,
-  });
-  const rimMat = new THREE.MeshStandardMaterial({
-    color: 0xc9d2da,
-    roughness: 0.3,
-    metalness: 0.9,
-    envMapIntensity: 1.0,
-  });
-  const discMat = new THREE.MeshStandardMaterial({
-    color: 0x8b9198,
-    map: discTexture(),
-    roughness: 0.38,
-    metalness: 0.9,
-    envMapIntensity: 1.0,
-  });
-  const caliperMat = new THREE.MeshStandardMaterial({
-    color: look.accent,
-    roughness: 0.34,
-    metalness: 0.5,
-    envMapIntensity: 0.9,
-  });
   const blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4, depthWrite: false });
+  const wheelMat = real
+    ? null
+    : new THREE.MeshStandardMaterial({
+        color: 0x141519,
+        map: tireTexture(),
+        roughness: 0.94,
+        metalness: 0.0,
+        envMapIntensity: 0.35,
+      });
+  const rimMat = real
+    ? null
+    : new THREE.MeshStandardMaterial({
+        color: 0xc9d2da,
+        roughness: 0.3,
+        metalness: 0.9,
+        envMapIntensity: 1.0,
+      });
+  const discMat = real
+    ? null
+    : new THREE.MeshStandardMaterial({
+        color: 0x8b9198,
+        map: discTexture(),
+        roughness: 0.38,
+        metalness: 0.9,
+        envMapIntensity: 1.0,
+      });
+  const caliperMat = real
+    ? null
+    : new THREE.MeshStandardMaterial({
+        color: look.accent,
+        roughness: 0.34,
+        metalness: 0.5,
+        envMapIntensity: 0.9,
+      });
   for (const spot of built.wheels) {
     const pivot = new THREE.Group();
     pivot.position.set(spot.x, spot.y, spot.z);
-    const spin = new THREE.Group();
-    const tire = new THREE.Mesh(spot.tire, wheelMat);
-    const rim = new THREE.Mesh(spot.rim, rimMat);
-    const disc = new THREE.Mesh(spot.disc, discMat);
-    tire.castShadow = true;
-    rim.castShadow = true;
-    spin.add(tire, rim, disc);
-    const caliper = new THREE.Mesh(spot.caliper, caliperMat);
-    caliper.castShadow = true;
-    pivot.add(spin, caliper);
+    const imported = real ? real.wheels[cornerOf(spot.x, spot.z)] : null;
+    const spin = imported ? imported.spin : new THREE.Group();
+    if (imported) {
+      pivot.add(spin, imported.upright);
+    } else {
+      const tire = new THREE.Mesh(spot.tire, wheelMat!);
+      const rim = new THREE.Mesh(spot.rim, rimMat!);
+      const disc = new THREE.Mesh(spot.disc, discMat!);
+      tire.castShadow = true;
+      rim.castShadow = true;
+      spin.add(tire, rim, disc);
+      const caliper = new THREE.Mesh(spot.caliper, caliperMat!);
+      caliper.castShadow = true;
+      pivot.add(spin, caliper);
+    }
     root.add(pivot);
     // Contact patch decal: stays flat on the road under this wheel.
     const blob = new THREE.Mesh(geos.contact, blobMat);
@@ -469,28 +493,44 @@ export function createCarView(color: number, vehicleId: string, rival = false): 
 
   // Race number plates: rear panel plus one per door.
   const numberMap = numberTexture(role, vehicleId, look.accent);
-  const numberMat = new THREE.MeshBasicMaterial({ map: numberMap, transparent: true, toneMapped: false });
+  const numberMat = new THREE.MeshBasicMaterial({ map: numberMap, transparent: true, toneMapped: false, depthWrite: false });
+  numberMat.polygonOffset = true;
+  numberMat.polygonOffsetFactor = -1;
+  numberMat.polygonOffsetUnits = -2;
   const plateH = 0.39 * dims.numberScale;
   const rearNumber = new THREE.Mesh(new THREE.PlaneGeometry(plateH * 1.6, plateH), numberMat);
-  rearNumber.position.set(0, dims.plateY, dims.tailZ - 0.03);
+  const sideZ = real ? (real.bounds.max.z + real.bounds.min.z) * 0.08 : -0.2;
+  const sideY = real ? real.bounds.min.y + (real.bounds.max.y - real.bounds.min.y) * 0.46 : dims.beltY - 0.02;
+  const sideX = real ? real.bounds.max.x * 0.9 : bodyWidthAt(vehicleId, -0.3) * 0.72;
+  rearNumber.position.set(
+    0,
+    real ? real.bounds.min.y + (real.bounds.max.y - real.bounds.min.y) * 0.42 : dims.plateY,
+    real ? real.bounds.min.z - 0.012 : dims.tailZ - 0.03,
+  );
   rearNumber.rotation.y = Math.PI;
   chassis.add(rearNumber);
   for (const side of [-1, 1]) {
     const sideNumber = new THREE.Mesh(new THREE.PlaneGeometry(plateH * 1.5, plateH * 0.86), numberMat.clone());
-    const x = bodyWidthAt(vehicleId, -0.3) * 0.72;
-    sideNumber.position.set(side * x, dims.beltY - 0.02, -0.2);
+    sideNumber.position.set(side * sideX, sideY, sideZ);
     sideNumber.rotation.y = side * Math.PI * 0.5;
     chassis.add(sideNumber);
   }
 
-  // Accent blade along the splitter's leading edge.
-  const lip = new THREE.Mesh(geos.lens, materialFor("accent"));
-  lip.scale.set(dims.halfWidth * 1.5, 0.016, 0.035);
-  lip.position.set(0, dims.floorY - 0.004, dims.tipZ + dims.splitter * 0.06);
-  chassis.add(lip);
+  // The prototype's full-width accent blade sticks out past the pointed nose.
+  // Imported cars carry their own splitter stripe instead.
+  if (!real && vehicleId !== "surge") {
+    const lip = new THREE.Mesh(geos.lens, materialFor("accent"));
+    lip.scale.set(dims.halfWidth * 1.5, 0.016, 0.035);
+    lip.position.set(0, dims.floorY - 0.004, dims.tipZ + dims.splitter * 0.06);
+    chassis.add(lip);
+  }
 
   const headLight = new THREE.SpotLight(0xfff4e4, 3.4, 40, 0.5, 0.65, 1.4);
-  headLight.position.set(0, dims.lampY, dims.lampZ);
+  headLight.position.set(
+    0,
+    real ? real.bounds.min.y + (real.bounds.max.y - real.bounds.min.y) * 0.36 : dims.lampY,
+    real ? real.bounds.max.z - 0.15 : dims.lampZ,
+  );
   headLight.castShadow = false;
   const lightTarget = new THREE.Object3D();
   lightTarget.position.set(0, 0.15, 18);
@@ -498,7 +538,11 @@ export function createCarView(color: number, vehicleId: string, rival = false): 
   chassis.add(headLight, lightTarget);
 
   const tailLight = new THREE.PointLight(0xff1838, 0.08, 7, 2);
-  tailLight.position.set(0, dims.tailY, dims.tailZ - 0.16);
+  tailLight.position.set(
+    0,
+    real ? real.bounds.min.y + (real.bounds.max.y - real.bounds.min.y) * 0.4 : dims.tailY,
+    real ? real.bounds.min.z + 0.12 : dims.tailZ - 0.16,
+  );
   chassis.add(tailLight);
 
   const boost = new THREE.Group();
@@ -538,6 +582,7 @@ export function createCarView(color: number, vehicleId: string, rival = false): 
     tailLight,
     boostLight,
     hero: look.hero,
+    bodyLod: real ? real.lod : null,
     susp: [0, 0],
     suspVel: [0, 0],
     heave: 0,
@@ -545,6 +590,35 @@ export function createCarView(color: number, vehicleId: string, rival = false): 
     wasAir: false,
     stamp: performance.now(),
   };
+}
+
+function cornerOf(x: number, z: number): CarCorner {
+  if (z >= 0) return x >= 0 ? "FL" : "FR";
+  return x >= 0 ? "RL" : "RR";
+}
+
+function disposeUnusedBody(built: CarGeometry): void {
+  const seen = new Set<THREE.BufferGeometry>();
+  const drop = (geo: THREE.BufferGeometry | undefined) => {
+    if (!geo || seen.has(geo)) return;
+    seen.add(geo);
+    geo.dispose();
+  };
+  for (const geo of Object.values(built.parts)) drop(geo);
+  for (const wheel of built.wheels) {
+    drop(wheel.tire);
+    drop(wheel.rim);
+    drop(wheel.disc);
+    drop(wheel.caliper);
+  }
+}
+
+/** Low quality stays on the smaller body. Higher settings keep the near LOD. */
+export function setBodyDetail(view: CarView, quality: "low" | "medium" | "high"): void {
+  const lod = view.bodyLod;
+  const far = lod?.levels[1];
+  if (!far) return;
+  far.distance = quality === "low" ? 0 : 18;
 }
 
 function canvasTex(draw: (g: CanvasRenderingContext2D, w: number, h: number) => void, w: number, h: number): THREE.CanvasTexture {
@@ -1022,7 +1096,7 @@ function disposeMaterialOnce(
 	if (seenMaterials.has(material)) return;
 	seenMaterials.add(material);
 	for (const value of Object.values(material)) {
-		if (!(value instanceof THREE.Texture) || seenTextures.has(value)) continue;
+		if (!(value instanceof THREE.Texture) || seenTextures.has(value) || isSharedAsset(value)) continue;
 		seenTextures.add(value);
 		value.dispose();
 	}
@@ -1035,7 +1109,7 @@ export function releaseObject(root: THREE.Object3D): void {
 	const seenTextures = new Set<THREE.Texture>();
 	root.traverse((obj) => {
 		const mesh = obj as THREE.Mesh;
-		if (mesh.geometry && !SHARED_GEOS.has(mesh.geometry) && !seenGeometries.has(mesh.geometry)) {
+		if (mesh.geometry && !SHARED_GEOS.has(mesh.geometry) && !isSharedAsset(mesh.geometry) && !seenGeometries.has(mesh.geometry)) {
 			seenGeometries.add(mesh.geometry);
 			mesh.geometry.dispose();
 		}
@@ -1082,7 +1156,7 @@ export function disposeBundle(bundle: SceneBundle): void {
 	bundle.scene.traverse((obj) => {
 		if (underRoad(obj, bundle.road.group)) return;
 		const mesh = obj as THREE.Mesh;
-		if (mesh.geometry && !SHARED_GEOS.has(mesh.geometry) && !seenGeo.has(mesh.geometry)) {
+		if (mesh.geometry && !SHARED_GEOS.has(mesh.geometry) && !isSharedAsset(mesh.geometry) && !seenGeo.has(mesh.geometry)) {
 			seenGeo.add(mesh.geometry);
 			mesh.geometry.dispose();
 		}
