@@ -45,13 +45,9 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
-function mixPt(a: Pt, b: Pt, t: number): Pt {
-  return [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
-}
-
 function archAmount(z: number, axleZ: number, radius: number): number {
   // Only the middle of the tire is an opening. Ahead of it the fender is a solid face.
-  const reach = radius * 0.82;
+  const reach = radius * 1.15;
   const u = Math.abs(z - axleZ) / reach;
   if (u >= 1) return 0;
   return Math.cos(u * Math.PI * 0.5);
@@ -101,9 +97,8 @@ function sectionAt(shape: Shape, layout: WheelLayout, z: number): Pt[] {
   const radius = useRear ? layout.rearRadius : layout.frontRadius;
   const tireHalf = useRear ? shape.tireHalf.rear : shape.tireHalf.front;
   const wheelY = WHEEL_CONTACT_Y + radius;
-  const archTop = wheelY + radius + 0.075;
-  const lipY = Math.max(floor + 0.04, wheelY - radius * 0.62 * shape.enclose);
-  const inner = Math.max(0.08, track - tireHalf - 0.05);
+  const archTop = wheelY + radius + 0.09;
+  const inner = Math.max(0.08, track - tireHalf - 0.06);
 
   const tShoulder = 0.1 + round * 0.4;
   const yShoulder = 0.14 + round * 0.42;
@@ -123,43 +118,23 @@ function sectionAt(shape: Shape, layout: WheelLayout, z: number): Pt[] {
     [roofHalf * 0.42, crownC - 0.01 * (1 - round)],
     [0, crownC],
   ];
-  // The arch is a brow over the tire. It does not drop a panel beside the
-  // wheel, or the side view is a solid skirt with the tire hidden behind it.
-  const brow = track + tireHalf + 0.045;
-  const arched: Pt[] = [
-    [0, floor],
-    [inner * 0.4, floor + 0.012],
-    [inner * 0.82, floor + 0.028],
-    [inner, Math.max(floor + 0.05, lipY)],
-    [track - tireHalf * 0.1, archTop],
-    [brow, archTop + 0.012],
-    [brow * 0.97, Math.max(belt, archTop - 0.03)],
-    [lerp(brow, roofHalf, 0.4), lerp(archTop, Math.max(crown, belt), 0.2)],
-    [lerp(inner * 0.45, roofHalf, 0.65), lerp(archTop, crown, 0.55)],
-    [roofHalf, lerp(archTop, crown, 0.86)],
-    [roofHalf * 0.4, crown],
-    [0, crown],
-  ];
-  const blended = normal.map((p, i) => mixPt(p, arched[i]!, arch));
-  const axles = [
-    [layout.frontZ, layout.frontX, layout.frontRadius, shape.tireHalf.front],
-    [layout.rearZ, layout.rearX, layout.rearRadius, shape.tireHalf.rear],
-  ] as const;
-  return blended.map((pt) => {
-    let y = pt[1];
-    for (const [axleZ, axleX, axleR, tread] of axles) {
-      const fade = axleR + 0.28;
-      const dz = Math.abs(z - axleZ);
-      if (dz > fade) continue;
-      const dx = Math.abs(pt[0] - axleX);
-      if (dx > tread + 0.02) continue;
-      const influence = Math.cos((dz / fade) * Math.PI * 0.5);
-      const capped = Math.min(dz, axleR);
-      const profile = Math.sqrt(Math.max(0, axleR * axleR - capped * capped));
-      const wheelCenter = WHEEL_CONTACT_Y + axleR;
-      y = Math.max(y, wheelCenter + (profile + 0.045) * influence);
+  // Smooth arch: the rocker tucks inboard of the tire and the shoulder rises
+  // outboard over the tread. Y keeps climbing, so the section does not fold.
+  const outerLip = track + tireHalf + 0.06;
+  const lipY = Math.max(floor + 0.06, wheelY - radius * (0.08 + shape.enclose * 0.35));
+  return normal.map((p, i) => {
+    if (arch <= 0) return p;
+    if (i <= 4) {
+      const tuck = inner * (0.45 + 0.55 * (i / 4));
+      const y = i === 0 ? p[1] : lerp(p[1], lipY * (0.55 + 0.45 * (i / 4)), arch);
+      return [lerp(p[0], Math.min(p[0], tuck), arch), y] as Pt;
     }
-    return [pt[0], y] as Pt;
+    if (i <= 6) {
+      const y = lerp(p[1], archTop, arch * (i === 6 ? 1 : 0.72));
+      const x = lerp(p[0], outerLip * (i === 5 ? 0.96 : 1), arch);
+      return [x, y] as Pt;
+    }
+    return p;
   });
 }
 
@@ -221,10 +196,10 @@ function loftLoops(
   const noseZ = rings[count - 1]!.z;
   pos[w++] = tail[0];
   pos[w++] = tail[1];
-  pos[w++] = tailZ - 0.025;
+  pos[w++] = tailZ - 0.004;
   pos[w++] = nose[0];
   pos[w++] = nose[1];
-  pos[w++] = noseZ + 0.03;
+  pos[w++] = noseZ + 0.004;
   const index: number[] = [];
   for (let r = 0; r < count - 1; r++) {
     for (let i = 0; i < n; i++) {
@@ -292,7 +267,7 @@ function addWing(
   thick: number,
   y: number,
   z: number,
-  drop: number,
+  deckY: number,
 ): void {
   const section = foil(chord, thick);
   const rings: Array<{ z: number; loop: Pt[] }> = [];
@@ -330,11 +305,14 @@ function addWing(
   wing.computeVertexNormals();
   absorb(buckets.carbon, wing);
   wing.dispose();
+  const plateH = Math.max(0.18, y + thick * 0.5 - deckY + 0.02);
+  const plateY = deckY + plateH / 2;
   for (const side of [-1, 1]) {
-    const plate = endplate(0.018, chord * 0.92, drop);
-    plate.translate(side * (span / 2 - 0.01), y - drop * 0.5 + thick * 0.2, z - chord * 0.45);
+    const plate = endplate(0.045, Math.max(0.3, chord * 0.9), plateH);
+    plate.translate(side * (span / 2 - 0.02), plateY, z - chord * 0.32);
     absorb(buckets.carbon, plate);
     plate.dispose();
+    addPylon(buckets, side * span * 0.28, deckY + 0.01, y - 0.01, z - chord * 0.15);
   }
 }
 
@@ -402,7 +380,7 @@ function addPylon(
   z: number,
 ): void {
   const height = Math.max(0.08, y1 - y0);
-  const raw = new THREE.CylinderGeometry(0.018, 0.028, height, 12);
+  const raw = new THREE.CylinderGeometry(0.032, 0.046, height, 12);
   raw.translate(x, y0 + height / 2, z);
   absorb(buckets.carbon, raw);
   raw.dispose();
@@ -507,7 +485,7 @@ const VECTOR: Shape = {
   z1: 2.22,
   samples: 64,
   round: 0.86,
-  enclose: 0.18,
+  enclose: 0.38,
   tireHalf: { front: 0.13, rear: 0.15 },
   halfW: [
     [-2.16, 0.78],
@@ -575,7 +553,7 @@ const VANTA: Shape = {
   z1: 1.6,
   samples: 56,
   round: 0.8,
-  enclose: 0.16,
+  enclose: 0.34,
   tireHalf: { front: 0.125, rear: 0.155 },
   halfW: [
     [-1.7, 0.7],
@@ -636,8 +614,8 @@ const SURGE: Shape = {
   z0: -2.34,
   z1: 2.5,
   samples: 72,
-  round: 0.78,
-  enclose: 0.35,
+  round: 0.72,
+  enclose: 0.78,
   tireHalf: { front: 0.12, rear: 0.16 },
   halfW: [
     [-2.34, 0.9],
@@ -664,24 +642,25 @@ const SURGE: Shape = {
     [2.5, 0.16],
   ],
   belt: [
-    [-2.34, 0.4],
-    [-1.5, 0.5],
-    [-0.2, 0.5],
-    [0.55, 0.48],
-    [1.32, 0.42],
-    [1.7, 0.64],
-    [2.5, 0.2],
+    [-2.34, 0.42],
+    [-1.5, 0.58],
+    [-0.2, 0.6],
+    [0.55, 0.55],
+    [1.32, 0.5],
+    [1.75, 0.6],
+    [2.5, 0.22],
   ],
   crown: [
-    [-2.34, 0.46],
-    [-1.75, 0.58],
-    [-0.85, 0.55],
-    [-0.1, 0.58],
-    [0.38, 0.52],
-    [0.75, 0.4],
-    [1.32, 0.32],
-    [2.05, 0.24],
-    [2.5, 0.18],
+    [-2.34, 0.52],
+    [-1.9, 0.66],
+    [-1.45, 0.6],
+    [-0.85, 0.7],
+    [-0.12, 0.84],
+    [0.32, 0.68],
+    [0.75, 0.42],
+    [1.32, 0.34],
+    [2.05, 0.26],
+    [2.5, 0.2],
   ],
   roofHalf: [
     [-2.34, 0.22],
@@ -704,8 +683,8 @@ const AEGIS: Shape = {
   z0: -1.94,
   z1: 1.94,
   samples: 64,
-  round: 0.32,
-  enclose: 0.22,
+  round: 0.18,
+  enclose: 0.42,
   tireHalf: { front: 0.15, rear: 0.15 },
   halfW: [
     [-1.94, 0.88],
@@ -738,14 +717,15 @@ const AEGIS: Shape = {
     [1.94, 0.42],
   ],
   crown: [
-    [-1.94, 0.64],
-    [-1.58, 0.84],
-    [-1.24, 1.26],
-    [-0.82, 1.34],
-    [0.3, 1.33],
-    [0.5, 1.1],
-    [0.7, 0.78],
-    [1.1, 0.66],
+    [-1.94, 0.56],
+    [-1.72, 0.68],
+    [-1.48, 0.74],
+    [-1.22, 1.2],
+    [-0.95, 1.36],
+    [0.28, 1.36],
+    [0.4, 1.16],
+    [0.56, 0.8],
+    [1.05, 0.66],
     [1.94, 0.5],
   ],
   roofHalf: [
@@ -766,6 +746,57 @@ const AEGIS: Shape = {
 
 const SHAPES: Record<CarId, Shape> = { vector: VECTOR, vanta: VANTA, surge: SURGE, aegis: AEGIS };
 
+function addArchFender(
+  buckets: Record<RoleName, Bucket>,
+  x: number,
+  z: number,
+  radius: number,
+  tireHalf: number,
+  outerBody: number,
+): void {
+  const wheelY = WHEEL_CONTACT_Y + radius;
+  const shell = radius + 0.09;
+  const sign = x >= 0 ? 1 : -1;
+  const faceX = sign * Math.max(Math.abs(x) + tireHalf + 0.04, outerBody + 0.012);
+  const segments = 18;
+  const positions: number[] = [faceX, wheelY, z];
+  const normals: number[] = [sign, 0, 0];
+  for (let i = 0; i <= segments; i++) {
+    const theta = (Math.PI * i) / segments;
+    positions.push(faceX, wheelY + Math.sin(theta) * shell, z + Math.cos(theta) * shell);
+    normals.push(sign, 0, 0);
+  }
+  const index: number[] = [];
+  for (let i = 0; i < segments; i++) {
+    if (sign > 0) index.push(0, i + 1, i + 2);
+    else index.push(0, i + 2, i + 1);
+  }
+  const panel = new THREE.BufferGeometry();
+  panel.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  panel.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  panel.setIndex(index);
+  absorb(buckets.paint, panel);
+  panel.dispose();
+  const tube = new THREE.CylinderGeometry(shell * 0.98, shell * 0.98, 0.07, 24, 1, true, 0, Math.PI);
+  tube.rotateZ(Math.PI / 2);
+  tube.translate(faceX - sign * 0.035, wheelY, z);
+  absorb(buckets.paint, tube);
+  tube.dispose();
+}
+
+function addArchFenders(buckets: Record<RoleName, Bucket>, shape: Shape, layout: WheelLayout): void {
+  const spots: Array<[number, number, number, number]> = [
+    [layout.frontX, layout.frontZ, layout.frontRadius, shape.tireHalf.front],
+    [-layout.frontX, layout.frontZ, layout.frontRadius, shape.tireHalf.front],
+    [layout.rearX, layout.rearZ, layout.rearRadius, shape.tireHalf.rear],
+    [-layout.rearX, layout.rearZ, layout.rearRadius, shape.tireHalf.rear],
+  ];
+  const outerBody = Math.max(...shape.halfW.map((pair) => pair[1]));
+  for (const [x, z, radius, tireHalf] of spots) {
+    addArchFender(buckets, x, z, radius, tireHalf, outerBody);
+  }
+}
+
 function buildShape(shape: Shape, layout: WheelLayout, buckets: Record<RoleName, Bucket>): void {
   const rings: Array<{ z: number; loop: Pt[] }> = [];
   for (let i = 0; i < shape.samples; i++) {
@@ -776,71 +807,110 @@ function buildShape(shape: Shape, layout: WheelLayout, buckets: Record<RoleName,
   const noseY = curve(shape.crown, shape.z1) * 0.55 + curve(shape.floor, shape.z1) * 0.45;
   const tailY = curve(shape.crown, shape.z0) * 0.45 + curve(shape.belt, shape.z0) * 0.55;
   loftLoops((x, y, z) => buckets[roleAt(shape, x, y, z)], rings, [0, noseY], [0, tailY]);
+  addArchFenders(buckets, shape, layout);
 }
 
-function dress(id: CarId, shape: Shape, buckets: Record<RoleName, Bucket>): void {
+function skinX(shape: Shape, layout: WheelLayout, z: number, yLo: number, yHi: number): number {
+  let x = 0.25;
+  for (const p of sectionAt(shape, layout, z)) {
+    if (p[1] >= yLo && p[1] <= yHi) x = Math.max(x, p[0]);
+  }
+  return x + 0.012;
+}
+
+function addSideWindow(
+  buckets: Record<RoleName, Bucket>,
+  x: number,
+  y: number,
+  z: number,
+  length: number,
+  height: number,
+): void {
+  const raw = new THREE.PlaneGeometry(length, height, 1, 1);
+  raw.rotateY(x >= 0 ? Math.PI / 2 : -Math.PI / 2);
+  raw.translate(x, y, z);
+  absorb(buckets.glass, raw);
+  raw.dispose();
+}
+
+function addShut(
+  buckets: Record<RoleName, Bucket>,
+  x: number,
+  y: number,
+  z: number,
+  height: number,
+): void {
+  const raw = new THREE.BoxGeometry(0.016, height, 0.022);
+  raw.translate(x, y, z);
+  absorb(buckets.dark, raw);
+  raw.dispose();
+}
+
+function dress(id: CarId, shape: Shape, layout: WheelLayout, buckets: Record<RoleName, Bucket>): void {
   const nose = shape.z1;
   const tail = shape.z0;
+  const sidePair = (y: number, z: number, length: number, height: number, yLo: number, yHi: number) => {
+    const x = skinX(shape, layout, z, yLo, yHi);
+    addSideWindow(buckets, x, y, z, length, height);
+    addSideWindow(buckets, -x, y, z, length, height);
+  };
   if (id === "vector") {
-    addWing(buckets, 1.55, 0.38, 0.055, 1.05, -1.98, 0.34);
-    addPylon(buckets, 0.42, 0.72, 1.02, -1.92);
-    addPylon(buckets, -0.42, 0.72, 1.02, -1.92);
-    addLens(buckets, "lamp", 0.58, 0.4, nose - 0.02, 0.16, 0.045, 0.035);
-    addLens(buckets, "lamp", -0.58, 0.4, nose - 0.02, 0.16, 0.045, 0.035);
-    addLens(buckets, "tail", 0.62, 0.5, tail + 0.02, 0.16, 0.05, 0.03);
-    addLens(buckets, "tail", -0.62, 0.5, tail + 0.02, 0.16, 0.05, 0.03);
-    addMirror(buckets, 0.78, 0.78, 0.42);
-    addMirror(buckets, -0.78, 0.78, 0.42);
-    addPane(buckets, "glass", 1.05, 0.42, 0, 0.98, 0.55, -0.9, 0);
-    addPane(buckets, "glass", 0.7, 0.24, 0, 1.0, -0.98, 0.6, 0);
-    addLens(buckets, "dark", 0, 0.32, nose + 0.01, 0.28, 0.08, 0.04);
-    addLens(buckets, "chrome", 0.32, 0.3, tail - 0.02, 0.045, 0.045, 0.05);
-    addLens(buckets, "chrome", -0.32, 0.3, tail - 0.02, 0.045, 0.045, 0.05);
+    addWing(buckets, 1.5, 0.36, 0.05, 0.94, -1.92, 0.62);
+    addLens(buckets, "lamp", 0.55, 0.42, nose - 0.04, 0.14, 0.04, 0.03);
+    addLens(buckets, "lamp", -0.55, 0.42, nose - 0.04, 0.14, 0.04, 0.03);
+    addLens(buckets, "tail", 0.58, 0.52, tail + 0.03, 0.14, 0.045, 0.025);
+    addLens(buckets, "tail", -0.58, 0.52, tail + 0.03, 0.14, 0.045, 0.025);
+    addMirror(buckets, 0.72, 0.82, 0.28);
+    addMirror(buckets, -0.72, 0.82, 0.28);
+    addPane(buckets, "glass", 0.95, 0.4, 0, 0.92, 0.52, -0.95, 0);
+    sidePair(0.96, -0.12, 0.72, 0.28, 0.75, 1.12);
+    addPane(buckets, "glass", 0.62, 0.26, 0, 0.98, -0.95, 0.7, 0);
+    addLens(buckets, "dark", 0, 0.34, nose - 0.02, 0.26, 0.07, 0.03);
   } else if (id === "vanta") {
-    addWing(buckets, 1.2, 0.26, 0.042, 0.98, -1.52, 0.2);
-    addPylon(buckets, 0.32, 0.78, 0.96, -1.48);
-    addPylon(buckets, -0.32, 0.78, 0.96, -1.48);
-    addLens(buckets, "lamp", 0.5, 0.44, nose - 0.01, 0.12, 0.055, 0.03);
-    addLens(buckets, "lamp", -0.5, 0.44, nose - 0.01, 0.12, 0.055, 0.03);
-    addLens(buckets, "tail", 0.55, 0.55, tail + 0.02, 0.13, 0.06, 0.03);
-    addLens(buckets, "tail", -0.55, 0.55, tail + 0.02, 0.13, 0.06, 0.03);
-    addMirror(buckets, 0.74, 0.74, 0.28);
-    addMirror(buckets, -0.74, 0.74, 0.28);
-    addPane(buckets, "glass", 0.92, 0.34, 0, 0.92, 0.42, -1.0, 0);
-    addPane(buckets, "glass", 0.5, 0.2, 0, 0.92, -0.82, 0.75, 0);
+    addWing(buckets, 1.15, 0.28, 0.042, 0.98, -1.48, 0.74);
+    addLens(buckets, "lamp", 0.48, 0.42, nose - 0.03, 0.11, 0.045, 0.025);
+    addLens(buckets, "lamp", -0.48, 0.42, nose - 0.03, 0.11, 0.045, 0.025);
+    addLens(buckets, "tail", 0.5, 0.55, tail + 0.03, 0.12, 0.05, 0.025);
+    addLens(buckets, "tail", -0.5, 0.55, tail + 0.03, 0.12, 0.05, 0.025);
+    addMirror(buckets, 0.7, 0.78, 0.22);
+    addMirror(buckets, -0.7, 0.78, 0.22);
+    addPane(buckets, "glass", 0.88, 0.32, 0, 0.88, 0.4, -1.05, 0);
+    sidePair(0.9, -0.02, 0.55, 0.24, 0.72, 1.02);
+    addPane(buckets, "glass", 0.48, 0.2, 0, 0.9, -0.78, 0.85, 0);
   } else if (id === "surge") {
-    addFin(buckets, -0.15, -1.85, 0.62, 0.96);
-    addWing(buckets, 1.82, 0.48, 0.07, 0.9, -2.12, 0.46);
-    addPylon(buckets, 0.36, 0.55, 0.88, -2.02);
-    addPylon(buckets, -0.36, 0.55, 0.88, -2.02);
-    addLens(buckets, "lamp", 0.16, 0.26, nose - 0.01, 0.07, 0.025, 0.02);
-    addLens(buckets, "lamp", -0.16, 0.26, nose - 0.01, 0.07, 0.025, 0.02);
-    addLens(buckets, "tail", 0.55, 0.4, tail + 0.02, 0.12, 0.035, 0.025);
-    addLens(buckets, "tail", -0.55, 0.4, tail + 0.02, 0.12, 0.035, 0.025);
-    addMirror(buckets, 0.38, 0.58, 0.32);
-    addMirror(buckets, -0.38, 0.58, 0.32);
-    const canopy = new THREE.SphereGeometry(0.32, 22, 16);
-    canopy.scale(1.05, 0.7, 1.45);
-    canopy.translate(0, 0.7, 0.02);
-    absorb(buckets.glass, canopy);
-    canopy.dispose();
+    addFin(buckets, -0.05, -1.7, 0.78, 0.98);
+    addWing(buckets, 1.7, 0.42, 0.06, 0.9, -2.05, 0.58);
+    addLens(buckets, "lamp", 0.18, 0.28, nose - 0.02, 0.06, 0.022, 0.018);
+    addLens(buckets, "lamp", -0.18, 0.28, nose - 0.02, 0.06, 0.022, 0.018);
+    addLens(buckets, "tail", 0.62, 0.42, tail + 0.02, 0.1, 0.03, 0.02);
+    addLens(buckets, "tail", -0.62, 0.42, tail + 0.02, 0.1, 0.03, 0.02);
+    addPane(buckets, "glass", 0.62, 0.32, 0, 0.72, 0.4, -0.8, 0);
+    addSideWindow(buckets, 0.4, 0.72, 0.02, 0.55, 0.22);
+    addSideWindow(buckets, -0.4, 0.72, 0.02, 0.55, 0.22);
+    addPane(buckets, "glass", 0.46, 0.18, 0, 0.76, -0.22, 0.6, 0);
   } else {
-    addWing(buckets, 1.45, 0.3, 0.045, 1.02, -1.72, 0.28);
-    addPylon(buckets, 0.46, 0.72, 1.0, -1.66);
-    addPylon(buckets, -0.46, 0.72, 1.0, -1.66);
-    addLens(buckets, "lamp", 0.62, 0.48, nose - 0.02, 0.2, 0.06, 0.035);
-    addLens(buckets, "lamp", -0.62, 0.48, nose - 0.02, 0.2, 0.06, 0.035);
-    addLens(buckets, "tail", 0.68, 0.58, tail + 0.02, 0.2, 0.07, 0.03);
-    addLens(buckets, "tail", -0.68, 0.58, tail + 0.02, 0.2, 0.07, 0.03);
-    addMirror(buckets, 0.9, 0.92, 0.48);
-    addMirror(buckets, -0.9, 0.92, 0.48);
-    addPane(buckets, "glass", 1.25, 0.4, 0, 1.1, 0.62, -1.1, 0);
-    addPane(buckets, "glass", 0.85, 0.3, 0, 1.14, -1.08, 0.5, 0);
-    addLens(buckets, "dark", 0.28, 1.08, 0.02, 0.04, 0.2, 0.02);
-    addLens(buckets, "dark", -0.28, 1.08, 0.02, 0.04, 0.2, 0.02);
-    addLens(buckets, "dark", 0, 0.36, nose + 0.01, 0.42, 0.1, 0.04);
-    addLens(buckets, "chrome", 0.42, 0.32, tail - 0.01, 0.05, 0.05, 0.05);
-    addLens(buckets, "chrome", -0.42, 0.32, tail - 0.01, 0.05, 0.05, 0.05);
+    addWing(buckets, 1.35, 0.3, 0.045, 0.98, -1.62, 0.7);
+    addLens(buckets, "lamp", 0.58, 0.48, nose - 0.04, 0.18, 0.055, 0.03);
+    addLens(buckets, "lamp", -0.58, 0.48, nose - 0.04, 0.18, 0.055, 0.03);
+    addLens(buckets, "tail", 0.62, 0.62, tail + 0.03, 0.18, 0.06, 0.025);
+    addLens(buckets, "tail", -0.62, 0.62, tail + 0.03, 0.18, 0.06, 0.025);
+    addMirror(buckets, 0.92, 0.98, 0.42);
+    addMirror(buckets, -0.92, 0.98, 0.42);
+    addPane(buckets, "glass", 1.2, 0.42, 0, 1.05, 0.55, -1.15, 0);
+    sidePair(1.08, 0.12, 0.38, 0.32, 0.85, 1.28);
+    sidePair(1.08, -0.42, 0.42, 0.3, 0.85, 1.28);
+    addPane(buckets, "glass", 0.9, 0.32, 0, 1.12, -1.12, 0.55, 0);
+    for (const x of [1, -1]) {
+      const shutX = x * (skinX(shape, layout, 0, 0.7, 1.2) + 0.006);
+      addShut(buckets, shutX, 0.95, 0.46, 0.62);
+      addShut(buckets, shutX, 0.98, -0.02, 0.7);
+      addShut(buckets, shutX, 0.95, -0.72, 0.62);
+      const skirt = new THREE.BoxGeometry(0.045, 0.055, 1.55);
+      skirt.translate(x * 1.0, 0.24, -0.05);
+      absorb(buckets.carbon, skirt);
+      skirt.dispose();
+    }
+    addLens(buckets, "dark", 0, 0.38, nose - 0.03, 0.38, 0.08, 0.03);
   }
 }
 
@@ -907,6 +977,6 @@ export function buildBody(
   const shape = SHAPES[id];
   const buckets = emptyBuckets();
   buildShape(shape, layout, buckets);
-  dress(id, shape, buckets);
+  dress(id, shape, layout, buckets);
   return { parts: finish(buckets), dims: dimsFor(shape, layout) };
 }
