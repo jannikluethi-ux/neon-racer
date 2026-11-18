@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { ROAD_DECK_Y } from "./contact";
-import { createCarView, releaseObject, type CarView } from "./visuals";
+import { createCarView, releaseObject, setBodyDetail, type CarView } from "./visuals";
 import { buildEnvironment, type BuiltEnvironment } from "./environment";
 import { themeFor, TRACKS } from "./track-def";
 import { VEHICLES } from "./vehicle-def";
@@ -200,6 +200,7 @@ export function createShowroom(renderer: THREE.WebGLRenderer): Showroom {
       view.root.rotation.set(0, lineup && carsOpen ? Math.PI / 2 : carsOpen ? delta * 0.28 : 0, 0);
       view.headLight.visible = frame.quality !== "low" && ad < 0.45;
       view.headLight.intensity = 2.2;
+      setBodyDetail(view, frame.quality);
       if (ad < 0.4 && !frame.reduced) {
         for (const wheel of view.wheels) wheel.rotation.x += dt * 0.35;
       }
@@ -235,7 +236,7 @@ export function createShowroom(renderer: THREE.WebGLRenderer): Showroom {
     const u = venue * venue * (3 - 2 * venue);
     const zoom = showcase.zoom;
     const az = VIEW_AZ[showcase.view] + (frame.reduced || showcase.dragging ? 0 : Math.sin(clock.t * 0.35) * 0.05);
-    const garageDist = (lineup && carsOpen ? 11.5 : carsOpen ? 8.05 : 8.7) * zoom;
+    const garageDist = (lineup && carsOpen ? 13.4 : carsOpen ? 9.8 : 10.2) * zoom;
     const garageX = Math.sin(az) * garageDist;
     const garageZ = Math.cos(az) * garageDist;
     const garageY = (carsOpen ? 1.72 : 1.78) + showcase.pitch;

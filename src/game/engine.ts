@@ -23,7 +23,8 @@ import { applyContact, driftStateLabel } from "./vehicle";
 import { sampleAt } from "./track";
 import { wheelLayout } from "./car-model";
 import { kerbWeightProfile } from "./kerb";
-import { buildScene, disposeBundle, drawMinimap, syncCar, type CarPaint, type CarVis } from "./visuals";
+import { buildScene, disposeBundle, drawMinimap, setBodyDetail, syncCar, type CarPaint, type CarVis } from "./visuals";
+import { carAssetReport, preloadCarModels } from "./car-assets";
 import { buildEnvironment, type BuiltEnvironment } from "./environment";
 import { createShowroom, type Showroom } from "./showroom";
 import { createCompareScene, type CompareHandle } from "./compare-scene";
@@ -130,6 +131,37 @@ function rankedResults(rank: readonly CarState[]): ResultRow[] {
 }
 
 export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null): () => void {
+  let dead = false;
+  let release: () => void = () => {
+    dead = true;
+  };
+  let renderer: THREE.WebGLRenderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
+  } catch {
+    window.dispatchEvent(new CustomEvent("game-fallback", { detail: "WebGL context could not be created." }));
+    return () => {};
+  }
+  void preloadCarModels(renderer)
+    .catch((err: unknown) => {
+      console.warn("Real car models did not load. The built-in bodies stay on screen.", err);
+    })
+    .then(() => {
+      if (dead) {
+        renderer.dispose();
+        return;
+      }
+      try {
+        release = mountGame(canvas, minimap, renderer);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to initialize engine.";
+        window.dispatchEvent(new CustomEvent("game-fallback", { detail: message }));
+      }
+    });
+  return () => release();
+}
+
+function mountGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null, renderer: THREE.WebGLRenderer): () => void {
   const params = new URLSearchParams(window.location.search);
   const qa = import.meta.env.DEV && params.get("qa") === "1";
   const sim = createSim(qa);
@@ -139,19 +171,12 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   let shownKey = `${sim.track.id}:${sim.cars[0]!.vehicleId}`;
   const audio = new AudioDirector();
 
-  let renderer: THREE.WebGLRenderer;
   /** Dev-only QA camera: park the view on one car and optionally hold time. */
   let inspect: InspectSpec | null = null;
   let soloCarIndex: number | null = null;
   let forceDressingVisibleForQa = false;
   /** Copy the live pose into the interpolator after a QA teleport. */
   let snapPose = false;
-  try {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
-  } catch {
-    window.dispatchEvent(new CustomEvent("game-fallback", { detail: "WebGL context could not be created." }));
-    return () => {};
-  }
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.08;
@@ -246,9 +271,10 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     bloomPass.threshold = 1.02;
     bundle.dressing.visible = q !== "low";
     const lamp = q === "low" ? 0 : q === "high" ? 6.2 : 3.3;
-    for (const view of bundle.cars) {
+    for (const view of [...raceBundle.cars, ...padBundle.cars]) {
       view.headLight.intensity = lamp;
       view.headLight.visible = lamp > 0;
+      setBodyDetail(view, q);
     }
   };
 
@@ -359,6 +385,8 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
         forceDressingVisibleForQa = visible;
         bundle.dressing.visible = visible;
       },
+      /** Dev-only: triangle counts for the imported bodies. */
+      modelStats: () => carAssetReport(),
       renderStats: () => {
         const sceneGeometries = new Set<THREE.BufferGeometry>();
         const sceneTextures = new Set<THREE.Texture>();
