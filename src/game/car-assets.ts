@@ -154,7 +154,9 @@ function fitOf(id: Exclude<CarId, "surge">, level: Level): { scale: THREE.Vector
   const scaleZ = modelWb > 0.01 ? layout.wheelbase / modelWb : 1;
   const scaleX = modelTrack > 0.01 ? physTrack / modelTrack : scaleZ;
   const scaleY = scaleZ;
-  const drop = id === "aegis" ? 0.055 : id === "vanta" ? 0.03 : 0;
+  // Visual body drop only. The arch crown is already close to the tyre, so this
+  // is the extra ride-height the fender can take before the tyre meets the lip.
+  const drop = id === "aegis" ? 0.078 : id === "vanta" ? 0.052 : 0;
   const offsetZ = layout.frontZ - frontPos.z * scaleZ;
   return {
     scale: new THREE.Vector3(scaleX, scaleY, scaleZ),
@@ -173,6 +175,7 @@ function buildLevel(root: THREE.Object3D, id: Exclude<CarId, "surge">): Level {
     uprights[corner] = taken.upright;
     radius[corner] = taken.radius;
   }
+  if (id === "vector") editVectorMesh(root);
   const skipSpoiler = id === "vanta";
   let tris = 0;
   root.traverse((obj) => {
@@ -182,11 +185,16 @@ function buildLevel(root: THREE.Object3D, id: Exclude<CarId, "surge">): Level {
     const slot = slotOf(mesh.name || "", material?.name || "", skipSpoiler);
     mesh.userData.slot = slot;
     if (slot === "skip" || /plate/i.test(mesh.name) || (skipSpoiler && /spoiler/i.test(mesh.name))) mesh.visible = false;
+    if (id === "vector" && /^(wing|wing_skin)$/i.test(obj.name)) obj.visible = false;
     tris += triCount(mesh.geometry);
   });
   markShared(root);
   root.updateMatrixWorld(true);
-  const modelBox = new THREE.Box3().setFromObject(root);
+  const modelBox = new THREE.Box3();
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (mesh.isMesh && mesh.visible) modelBox.expandByObject(mesh);
+  });
   const body = root as THREE.Group;
   body.name = "imported-body";
   for (const corner of CORNERS) tris += countGroup(wheels[corner]) + countGroup(uprights[corner]);
@@ -307,7 +315,7 @@ export function instantiateRealCar(vehicleId: string, look: CarLook): RealCarIns
     assignMaterials(clone, materials, look, paint, brake);
     holder.add(clone);
     if (vehicleId === "vanta" || vehicleId === "aegis") mountRaceKit(holder, vehicleId, level.modelBox, look.accent);
-    if (vehicleId === "vector") mountVectorIdentity(holder, level.modelBox, look.accent);
+    if (vehicleId === "vector") mountVectorIdentity(holder, level.modelBox, look.accent, paint);
     lod.addLevel(holder, distance, 0.15);
   }
   const wheels = {} as RealCarInstance["wheels"];
@@ -499,172 +507,342 @@ function materialFor(slot: Slot, source: THREE.Material, look: CarLook): THREE.M
   return clone;
 }
 
+const kitGeos = new Map<string, THREE.BufferGeometry>();
+
+function pooled(key: string, build: () => THREE.BufferGeometry): THREE.BufferGeometry {
+  let geo = kitGeos.get(key);
+  if (!geo) {
+    geo = build();
+    sharedGeos.add(geo);
+    kitGeos.set(key, geo);
+  }
+  return geo;
+}
+
+function addPart(parent: THREE.Object3D, name: string, geo: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.name = name;
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+
 export function mountRaceKit(parent: THREE.Object3D, vehicleId: string, bounds: THREE.Box3, accent: number): void {
   if (vehicleId !== "vanta" && vehicleId !== "aegis") return;
   const tcr = vehicleId === "aegis";
-  const carbon = new THREE.MeshStandardMaterial({ color: 0x14171c, roughness: 0.42, metalness: 0.55, envMapIntensity: 0.6 });
-  const edge = new THREE.MeshStandardMaterial({
-    color: 0x0c0e12,
-    emissive: accent,
-    emissiveIntensity: 0.45,
-    roughness: 0.35,
-    metalness: 0.3,
-  });
-  const half = Math.min(bounds.max.x * 0.92, tcr ? 0.98 : 0.9);
-  const nose = bounds.max.z - (tcr ? 0.28 : 0.18);
-  const bladeY = Math.max(bounds.min.y + 0.08, 0.1);
-  const depth = tcr ? 0.16 : 0.11;
-  const blade = new THREE.Mesh(splitterBlade(half * 2, depth), carbon);
-  blade.position.set(0, bladeY, nose - depth);
-  blade.castShadow = true;
-  parent.add(blade);
-  for (const side of [-1, 1]) {
-    const skirtLen = (bounds.max.z - bounds.min.z) * 0.46;
-    const skirt = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.04, skirtLen), carbon);
-    skirt.position.set(side * (bounds.max.x - 0.02), bladeY + 0.05, (bounds.max.z + bounds.min.z) * 0.05);
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.012, skirtLen * 0.92), edge);
-    stripe.position.set(side * (bounds.max.x + 0.004), bladeY + 0.07, skirt.position.z);
-    parent.add(skirt, stripe);
-  }
-
-  const trunk = trunkDeck(parent.children[0], parent);
-  const deckY = trunk.y;
-  const wingZ = trunk.z;
-  const rise = tcr ? 0.22 : 0.12;
-  const span = half * (tcr ? 1.7 : 1.4);
-  const wing = new THREE.Mesh(airfoil(span, tcr ? 0.24 : 0.18, 0.02), carbon);
-  wing.position.set(0, deckY + rise, wingZ);
-  wing.castShadow = true;
-  parent.add(wing);
-  for (const side of [-1, 1]) {
-    const neck = new THREE.Mesh(swanNeck(rise), carbon);
-    neck.position.set(side * Math.min(0.26, span * 0.16), deckY - 0.015, wingZ + 0.02);
-    neck.castShadow = true;
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.012, 0.1), carbon);
-    foot.position.set(neck.position.x, deckY, wingZ + 0.02);
-    parent.add(neck, foot);
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.012, tcr ? 0.1 : 0.065, tcr ? 0.2 : 0.14), carbon);
-    plate.position.set(side * span * 0.5, deckY + rise, wingZ);
-    parent.add(plate);
-  }
-}
-
-function mountVectorIdentity(parent: THREE.Object3D, bounds: THREE.Box3, accent: number): void {
-  const neon = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    emissive: 0xf7fdff,
-    emissiveIntensity: 2.4,
-    roughness: 0.15,
-    toneMapped: false,
-  });
-  const carbon = new THREE.MeshStandardMaterial({ color: 0x121418, roughness: 0.4, metalness: 0.6 });
   const body = parent.children[0];
-  const lamps = slotCenters(body, parent, "lamp").filter((p) => p.z > 0.2);
-  const used = lamps.length > 0 ? lamps : [new THREE.Vector3(0.55, 0.48, bounds.max.z - 0.45), new THREE.Vector3(-0.55, 0.48, bounds.max.z - 0.45)];
-  for (const lamp of used) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.03, 0.016), neon);
-    blade.position.set(lamp.x, lamp.y, lamp.z + 0.045);
-    parent.add(blade);
-  }
-  const spine = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.014, 0.62), carbon);
-  spine.position.set(0, bounds.max.y * 0.5, bounds.max.z - 0.95);
-  const inlay = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.008, 0.48), neon);
-  inlay.position.set(0, spine.position.y + 0.01, spine.position.z);
-  parent.add(spine, inlay);
-  const lip = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.014, 0.028), neon);
-  lip.position.set(0, 0.22, bounds.max.z - 0.22);
-  parent.add(lip);
-  const tailMat = neon.clone();
-  tailMat.emissive = new THREE.Color(accent);
-  const tail = bounds.min.z;
-  const tailBar = new THREE.Mesh(new THREE.BoxGeometry(Math.min(1.5, bounds.max.x * 1.2), 0.022, 0.012), tailMat);
-  tailBar.position.set(0, bounds.max.y * 0.32, tail + 0.08);
-  parent.add(tailBar);
-  for (const x of [-0.28, -0.1, 0.1, 0.28]) {
-    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.06, 0.14), carbon);
-    fin.position.set(x, 0.2, tail + 0.18);
-    parent.add(fin);
-  }
-}
-
-function slotCenters(body: THREE.Object3D | undefined, holder: THREE.Object3D, slot: string): THREE.Vector3[] {
-  if (!body) return [];
-  holder.updateWorldMatrix(true, true);
-  const inv = holder.matrixWorld.clone().invert();
-  const found: THREE.Vector3[] = [];
-  body.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh || mesh.userData.slot !== slot) return;
-    const box = new THREE.Box3().setFromObject(mesh);
-    if (box.isEmpty()) return;
-    found.push(box.getCenter(new THREE.Vector3()).applyMatrix4(inv));
+  const carbon = new THREE.MeshStandardMaterial({ color: 0x14171c, roughness: 0.42, metalness: 0.55, envMapIntensity: 0.6 });
+  const gurneyMat = new THREE.MeshStandardMaterial({
+    color: 0x101216,
+    emissive: accent,
+    emissiveIntensity: 0.4,
+    roughness: 0.35,
+    metalness: 0.25,
   });
-  return found;
+  const bladeY = Math.max(0.1, bounds.min.y + 0.08);
+  const face = bumperFace(body, parent, bladeY, bladeY + (tcr ? 0.28 : 0.22));
+  const lead = tcr ? 0.07 : 0.03;
+  const bladeKey = `${vehicleId}:splitter:${face.back.toFixed(2)}:${lead}`;
+  const blade = addPart(parent, "kit-splitter", pooled(bladeKey, () => splitterFromFace(face, lead)), carbon, 0, bladeY, face.back);
+  blade.castShadow = true;
+
+  // Sills sit between the arches. bounds.max.x includes the mirrors, and a
+  // skirt hung on that width is the pair of black squares beside Aegis's rear tyres.
+  const sill = sillSpan(body, parent, bladeY + 0.04, 0.42);
+  if (sill) {
+    const skirtGeo = pooled(`${vehicleId}:skirt:${sill.len.toFixed(2)}`, () => new THREE.BoxGeometry(0.028, 0.045, sill.len));
+    for (const side of [-1, 1]) {
+      addPart(parent, "kit-skirt", skirtGeo, carbon, side * (sill.x - 0.012), bladeY + 0.03, sill.z);
+    }
+  }
+
+  // Lid positions measured on the source meshes. The bounding box's rear face
+  // is the bumper, and a wing hung on that face sits behind the car.
+  const trunk = tcr ? { y: 0.98, z: -1.95 } : { y: 0.96, z: -1.82 };
+  const deckY = trunk.y;
+  const chord = tcr ? 0.3 : 0.22;
+  const thick = tcr ? 0.048 : 0.038;
+  const rise = tcr ? 0.22 : 0.15;
+  const wingZ = trunk.z;
+  const span = Math.min(tcr ? 1.72 : 1.28, Math.max(0.8, sill ? sill.x * 2.05 : 1.2));
+  const wingKey = `${vehicleId}:wing:${span.toFixed(2)}:${chord}`;
+  addPart(parent, "kit-wing", pooled(wingKey, () => wingPlane(span, chord, thick)), carbon, 0, deckY + rise, wingZ);
+  const gurney = pooled(`${vehicleId}:gurney:${span.toFixed(2)}`, () => new THREE.BoxGeometry(span * 0.92, 0.012, 0.012));
+  addPart(parent, "kit-gurney", gurney, gurneyMat, 0, deckY + rise + thick * 0.46, wingZ - chord * 0.4);
+  const mountX = Math.min(tcr ? 0.34 : 0.26, span * 0.22);
+  const neck = pooled(`${vehicleId}:neck:${rise.toFixed(2)}`, () => swanNeck(rise - thick * 0.2, tcr ? 0.16 : 0.1, tcr ? 0.032 : 0.026));
+  const foot = pooled(`${vehicleId}:foot`, () => new THREE.BoxGeometry(tcr ? 0.14 : 0.11, 0.018, tcr ? 0.18 : 0.14));
+  const plateH = tcr ? 0.16 : 0.11;
+  const plate = pooled(`${vehicleId}:endplate:${plateH}`, () => new THREE.BoxGeometry(0.016, plateH, chord + 0.02));
+  for (const side of [-1, 1]) {
+    addPart(parent, "kit-neck", neck, carbon, side * mountX, deckY - 0.01, wingZ + chord * 0.22);
+    addPart(parent, "kit-foot", foot, carbon, side * mountX, deckY + 0.002, wingZ + chord * 0.28);
+    addPart(parent, "kit-endplate", plate, carbon, side * (span * 0.5 + 0.004), deckY + rise, wingZ);
+  }
 }
 
-function trunkDeck(body: THREE.Object3D | undefined, holder: THREE.Object3D): { y: number; z: number } {
-  const fallback = { y: 0.85, z: -1.6 };
-  if (!body) return fallback;
+function mountVectorIdentity(parent: THREE.Object3D, bounds: THREE.Box3, accent: number, _paint: THREE.Material): void {
+  const carbon = new THREE.MeshStandardMaterial({ color: 0x14171c, roughness: 0.4, metalness: 0.62 });
+  const neon = new THREE.MeshStandardMaterial({
+    color: 0xf4fbff,
+    emissive: accent,
+    emissiveIntensity: 1.8,
+    roughness: 0.18,
+  });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x07080b, roughness: 0.5, metalness: 0.4 });
+  const deckY = 0.92;
+  const wingZ = -1.72;
+  const rise = 0.24;
+  const chord = 0.28;
+  const span = 1.42;
+  addPart(parent, "vec-wing", pooled("vector:wing", () => wingPlane(span, chord, 0.046)), carbon, 0, deckY + rise, wingZ);
+  const neck = pooled("vector:neck", () => swanNeck(rise - 0.02, 0.14, 0.03));
+  const foot = pooled("vector:foot", () => new THREE.BoxGeometry(0.12, 0.018, 0.16));
+  const plate = pooled("vector:endplate", () => new THREE.BoxGeometry(0.016, 0.15, chord + 0.02));
+  for (const side of [-1, 1]) {
+    addPart(parent, "vec-neck", neck, carbon, side * 0.26, deckY - 0.01, wingZ + 0.08);
+    addPart(parent, "vec-foot", foot, carbon, side * 0.26, deckY + 0.002, wingZ + 0.12);
+    addPart(parent, "vec-endplate", plate, carbon, side * (span * 0.5 + 0.004), deckY + rise, wingZ);
+  }
+  const diffuser = pooled("vector:diffuser", () => new THREE.BoxGeometry(0.95, 0.07, 0.32));
+  addPart(parent, "vec-diffuser", diffuser, carbon, 0, 0.2, bounds.min.z + 0.22);
+  const bar = pooled("vector:tailbar", () => new THREE.BoxGeometry(1.35, 0.035, 0.02));
+  addPart(parent, "vec-tailbar", bar, neon, 0, 0.7, bounds.min.z + 0.06);
+  const housingBar = pooled("vector:tail-housing", () => new THREE.BoxGeometry(1.45, 0.07, 0.03));
+  addPart(parent, "vec-tail-housing", housingBar, dark, 0, 0.7, bounds.min.z + 0.08);
+  for (const x of [-0.32, -0.12, 0.12, 0.32]) {
+    const fin = pooled("vector:fin", () => new THREE.BoxGeometry(0.016, 0.08, 0.22));
+    addPart(parent, "vec-fin", fin, carbon, x, 0.24, bounds.min.z + 0.2);
+  }
+}
+
+/** Chord runs along Z, thickness along Y, span along X. The leading edge is +Z. */
+function wingPlane(span: number, chord: number, thick: number): THREE.BufferGeometry {
+  const upper: Array<[number, number]> = [];
+  const lower: Array<[number, number]> = [];
+  const n = 8;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const z = chord * (0.5 - t);
+    const camber = thick * 0.15 * Math.sin(Math.PI * t);
+    const half = thick * (0.12 + 0.38 * Math.sin(Math.PI * Math.pow(t, 0.65)));
+    upper.push([z, camber + half]);
+    lower.push([z, camber - half * 0.72]);
+  }
+  const ring = upper.concat(lower.reverse());
+  const geo = new THREE.BufferGeometry();
+  const pos: number[] = [];
+  const index: number[] = [];
+  const halfSpan = span / 2;
+  for (const x of [-halfSpan, halfSpan]) {
+    for (const [z, y] of ring) pos.push(x, y, z);
+  }
+  const count = ring.length;
+  for (let i = 0; i < count; i++) {
+    const i2 = (i + 1) % count;
+    index.push(i, count + i, count + i2, i, count + i2, i2);
+  }
+  const cap = (start: number, flip: boolean) => {
+    for (let i = 1; i < count - 1; i++) {
+      index.push(start, start + (flip ? i + 1 : i), start + (flip ? i : i + 1));
+    }
+  };
+  cap(0, false);
+  cap(count, true);
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(index);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function editVectorMesh(root: THREE.Object3D): void {
+  root.updateMatrixWorld(true);
+  const v = new THREE.Vector3();
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh || /wheel|caliper|steering/i.test(mesh.name)) return;
+    const geo = mesh.geometry.clone();
+    const source = geo.getAttribute("position");
+    if (!source) return;
+    const floats = new Float32Array(source.count * 3);
+    for (let i = 0; i < source.count; i++) {
+      floats[i * 3] = source.getX(i);
+      floats[i * 3 + 1] = source.getY(i);
+      floats[i * 3 + 2] = source.getZ(i);
+    }
+    const pos = new THREE.BufferAttribute(floats, 3);
+    geo.setAttribute("position", pos);
+    const world = mesh.matrixWorld;
+    const inv = world.clone().invert();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(world);
+      deformVector(v);
+      v.applyMatrix4(inv);
+      pos.setXYZ(i, v.x, v.y, v.z);
+    }
+    pos.needsUpdate = true;
+    geo.morphAttributes = {};
+    mesh.morphTargetInfluences = [];
+    mesh.morphTargetDictionary = {};
+    const index = geo.getIndex();
+    if (index && geo.groups.length) {
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const keep: number[] = [];
+      const groups: Array<{ start: number; count: number; materialIndex: number }> = [];
+      for (const g of geo.groups) {
+        const materialIndex = g.materialIndex ?? 0;
+        const matName = mats[materialIndex]?.name || "";
+        let z = 0;
+        let n = 0;
+        const step = Math.max(1, Math.floor(g.count / 24));
+        for (let i = g.start; i < g.start + g.count; i += step) {
+          z += v.fromBufferAttribute(pos, index.getX(i)).applyMatrix4(world).z;
+          n += 1;
+        }
+        if (dropLamp(matName, mesh.name, n ? z / n : 0)) continue;
+        const start = keep.length;
+        for (let i = g.start; i < g.start + g.count; i++) keep.push(index.getX(i));
+        if (keep.length > start) groups.push({ start, count: keep.length - start, materialIndex });
+      }
+      geo.setIndex(keep);
+      geo.clearGroups();
+      for (const g of groups) geo.addGroup(g.start, g.count, g.materialIndex);
+    }
+    geo.computeBoundingBox();
+    geo.computeBoundingSphere();
+    mesh.geometry = geo;
+  });
+}
+
+/** Pull the wedge into a short upright nose and fill the cabin-forward slope. */
+function deformVector(v: THREE.Vector3): void {
+  if (v.z > 0.9) {
+    const u = Math.min(1, (v.z - 0.9) / 1.35);
+    v.z = 0.9 + u * 0.62;
+    if (v.y < 0.9) {
+      const t = Math.min(1, Math.max(0, (v.y - 0.04) / 0.7));
+      const ny = 0.42 + t * 0.26;
+      v.y = v.y * (1 - u * 0.92) + ny * (u * 0.92);
+    }
+    const limit = 0.98 - u * 0.18;
+    const ax = Math.abs(v.x);
+    if (ax > limit) v.x = Math.sign(v.x) * (limit + (ax - limit) * 0.2);
+  }
+  if (v.z > 0.35 && v.z < 1.35 && v.y > 0.55 && Math.abs(v.x) < 0.32) {
+    const along = Math.sin(Math.PI * Math.min(1, Math.max(0, (v.z - 0.35) / 0.9)));
+    v.y += 0.06 * along * Math.exp(-(v.x * v.x) / 0.014);
+  }
+}
+
+function dropLamp(matName: string, meshName: string, z: number): boolean {
+  if (/^(light_front|light_drl|light_rear|lens_red|reflector_red|lamp_housing)$/.test(matName)) return true;
+  if (matName === "lens_clear" && z > 0.4) return true;
+  if (matName === "glass" && meshName.startsWith("details")) return true;
+  return false;
+}
+
+function localPoint(
+  index: number,
+  pos: THREE.BufferAttribute | THREE.InterleavedBufferAttribute,
+  target: THREE.Vector3,
+  mesh: THREE.Mesh,
+  inv: THREE.Matrix4,
+): THREE.Vector3 {
+  return target.fromBufferAttribute(pos, index).applyMatrix4(mesh.matrixWorld).applyMatrix4(inv);
+}
+
+function bumperFace(body: THREE.Object3D | undefined, holder: THREE.Object3D, y0: number, y1: number): { pts: Array<[number, number]>; back: number } {
+  const cols = new Map<number, number>();
+  const v = new THREE.Vector3();
   holder.updateWorldMatrix(true, true);
   const inv = holder.matrixWorld.clone().invert();
-  const pts: Array<{ y: number; z: number }> = [];
+  if (body) {
+    body.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.visible) return;
+      if (/wheel|caliper|plate|glass|interior/i.test(mesh.name)) return;
+      const pos = mesh.geometry.getAttribute("position");
+      if (!pos) return;
+      const step = Math.max(1, Math.floor(pos.count / 2500));
+      for (let i = 0; i < pos.count; i += step) {
+        localPoint(i, pos, v, mesh, inv);
+        if (v.y < y0 || v.y > y1 || v.z < 0.8) continue;
+        const bin = Math.round(v.x * 20) / 20;
+        const prev = cols.get(bin);
+        if (prev === undefined || v.z > prev) cols.set(bin, v.z);
+      }
+    });
+  }
+  const pts = [...cols.entries()].sort((a, b) => a[0] - b[0]).map(([x, z]): [number, number] => [x, z]);
+  const back = pts.length ? Math.min(...pts.map((p) => p[1])) - 0.04 : 1.4;
+  return { pts, back };
+}
+
+function splitterFromFace(face: { pts: Array<[number, number]>; back: number }, lead: number): THREE.BufferGeometry {
+  const pts = face.pts.filter((p) => Math.abs(p[0]) < 1.05);
+  const shape = new THREE.Shape();
+  if (pts.length < 4) {
+    shape.moveTo(-0.5, 0);
+    shape.lineTo(0.5, 0);
+    shape.lineTo(0.2, 0.06);
+    shape.lineTo(-0.2, 0.06);
+  } else {
+    const half = Math.max(...pts.map((p) => Math.abs(p[0]))) || 1;
+    shape.moveTo(pts[0][0] * 0.96, 0);
+    for (const [x, z] of pts) {
+      const t = 1 - Math.min(1, Math.abs(x) / half);
+      const forward = Math.max(0, z - face.back) + lead * t * t;
+      shape.lineTo(x * 0.97, Math.max(0.005, forward));
+    }
+    shape.lineTo(pts[pts.length - 1][0] * 0.96, 0);
+  }
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.016, bevelEnabled: false, curveSegments: 1 });
+  geo.rotateX(Math.PI / 2);
+  geo.translate(0, 0.008, 0);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function sillSpan(body: THREE.Object3D | undefined, holder: THREE.Object3D, y0: number, y1: number): { x: number; z: number; len: number } | null {
+  if (!body) return null;
+  holder.updateWorldMatrix(true, true);
+  const inv = holder.matrixWorld.clone().invert();
+  let maxX = 0;
+  let z0 = 0;
+  let z1 = 0;
+  let n = 0;
   const v = new THREE.Vector3();
   body.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh || mesh.userData.slot !== "paint") return;
+    if (!mesh.isMesh || !mesh.visible) return;
+    if (/wheel|caliper|plate|mirror|glass/i.test(mesh.name)) return;
     const pos = mesh.geometry.getAttribute("position");
     if (!pos) return;
-    const step = Math.max(1, Math.floor(pos.count / 500));
+    const step = Math.max(1, Math.floor(pos.count / 2000));
     for (let i = 0; i < pos.count; i += step) {
-      v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld).applyMatrix4(inv);
-      if (Math.abs(v.x) > 0.4 || v.z > -0.9 || v.y < 0.45 || v.y > 1.2) continue;
-      pts.push({ y: v.y, z: v.z });
+      localPoint(i, pos, v, mesh, inv);
+      if (v.y < y0 || v.y > y1 || Math.abs(v.z) > 0.7) continue;
+      maxX = Math.max(maxX, Math.abs(v.x));
+      z0 = Math.min(z0, v.z);
+      z1 = Math.max(z1, v.z);
+      n += 1;
     }
   });
-  if (pts.length < 8) return fallback;
-  pts.sort((a, b) => a.z - b.z);
-  const rear = pts.slice(0, Math.max(8, Math.floor(pts.length * 0.35)));
-  rear.sort((a, b) => a.y - b.y);
-  const mid = rear[Math.floor(rear.length * 0.45)]!;
-  return { y: mid.y, z: mid.z };
+  if (n < 12 || maxX < 0.4) return null;
+  const len = Math.min(1.15, Math.max(0.4, z1 - z0 - 0.08));
+  return { x: maxX, z: (z0 + z1) / 2, len };
 }
 
-function splitterBlade(width: number, depth: number): THREE.BufferGeometry {
-  const half = width / 2;
-  const shape = new THREE.Shape();
-  shape.moveTo(-half * 0.96, 0);
-  shape.lineTo(half * 0.96, 0);
-  shape.quadraticCurveTo(half * 0.72, depth * 0.45, half * 0.28, depth * 0.82);
-  shape.quadraticCurveTo(0, depth, -half * 0.28, depth * 0.82);
-  shape.quadraticCurveTo(-half * 0.72, depth * 0.45, -half * 0.96, 0);
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.014, bevelEnabled: false, curveSegments: 8 });
-  geo.rotateX(Math.PI / 2);
-  geo.translate(0, 0.007, 0);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-function swanNeck(rise: number): THREE.BufferGeometry {
+function swanNeck(rise: number, sweep: number, radius: number): THREE.BufferGeometry {
   const curve = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0, 0, 0.05),
-    new THREE.Vector3(0, rise * 0.25, 0.03),
-    new THREE.Vector3(0, rise * 0.62, -0.01),
-    new THREE.Vector3(0, rise, -0.045),
+    new THREE.Vector3(0, 0, sweep),
+    new THREE.Vector3(0, rise * 0.32, sweep * 0.25),
+    new THREE.Vector3(0, rise * 0.72, -sweep * 0.15),
+    new THREE.Vector3(0, rise, -sweep * 0.42),
   ]);
-  const geo = new THREE.TubeGeometry(curve, 10, 0.016, 6, false);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-function airfoil(span: number, chord: number, thick: number): THREE.BufferGeometry {
-  const shape = new THREE.Shape();
-  shape.moveTo(0, 0);
-  shape.bezierCurveTo(chord * 0.3, thick, chord * 0.72, thick * 0.62, chord, thick * 0.08);
-  shape.lineTo(chord * 0.9, -thick * 0.1);
-  shape.bezierCurveTo(chord * 0.5, -thick * 0.3, chord * 0.18, -thick * 0.08, 0, 0);
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: span, bevelEnabled: false, curveSegments: 6, steps: 1 });
-  geo.translate(-chord * 0.32, 0, -span / 2);
-  geo.rotateY(Math.PI / 2);
+  const geo = new THREE.TubeGeometry(curve, 12, radius, 8, false);
   geo.computeVertexNormals();
   return geo;
 }

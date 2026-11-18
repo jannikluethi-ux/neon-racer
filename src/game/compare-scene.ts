@@ -176,6 +176,10 @@ export function createCompareScene(renderer: THREE.WebGLRenderer): CompareHandle
             return pts;
           })
         : visible.flatMap(cornersOf);
+    const steer = Number(new URLSearchParams(window.location.search).get("steer") || "0");
+    if (steer) {
+      for (const entry of views) for (const pivot of entry.view.frontPivots) pivot.rotation.y = steer;
+    }
     const width = renderer.domElement.width || 1;
     const height = renderer.domElement.height || 1;
     frame(width / height, points);
