@@ -74,7 +74,7 @@ export function createCompareScene(renderer: THREE.WebGLRenderer): CompareHandle
   scene.add(ground);
 
   const views: Array<{ id: string; view: CarView }> = VEHICLES.map((def) => {
-    const view = createCarView(def.color, def.id, false);
+    const view = createCarView(def.color, def.id, false, true);
     view.paint.envMapIntensity = 0.85;
     view.paint.clearcoatRoughness = 0.08;
     view.headLight.visible = false;
