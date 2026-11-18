@@ -309,15 +309,16 @@ function roleMaterial(role: CarRole, look: { body: THREE.Color; accent: number; 
     }
     case "glass":
       return new THREE.MeshPhysicalMaterial({
-        color: new THREE.Color(look.body).lerp(new THREE.Color(0x101820), 0.72),
-        roughness: 0.08,
-        metalness: 0.12,
+        color: 0x101820,
+        roughness: 0.04,
+        metalness: 0.08,
         transparent: true,
-        opacity: 0.94,
+        opacity: 0.62,
         clearcoat: 1,
-        clearcoatRoughness: 0.05,
-        envMapIntensity: 1.0,
+        clearcoatRoughness: 0.04,
+        envMapIntensity: 1.35,
         depthWrite: true,
+        side: THREE.DoubleSide,
       });
     case "dark":
       return new THREE.MeshStandardMaterial({ color: 0x0b0d11, roughness: 0.5, metalness: 0.35, envMapIntensity: 0.5 });

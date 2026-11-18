@@ -18,12 +18,15 @@ const BOUNDS: Record<string, { z0: number; z1: number; halfW: number; h: number 
   aegis: { z0: -2.02, z1: 2.0, halfW: 1.26, h: 1.4 },
 };
 
-type ShotKind = "side" | "front34" | "rear34" | "front" | "side1" | "rear";
+type ShotKind = "side" | "front34" | "rear34" | "front" | "side1" | "rear" | "wing";
 
 function parseShot(shot: string): { kind: ShotKind; car: string | null } {
   if (shot === "side" || shot === "front34" || shot === "rear34") return { kind: shot, car: null };
   const [car, view] = shot.split("-");
-  if ((view === "front" || view === "side" || view === "rear") && car && BOUNDS[car]) {
+  if (!car || !BOUNDS[car]) return { kind: "side", car: null };
+  if (view === "front34") return { kind: "front34", car };
+  if (view === "wing") return { kind: "wing", car };
+  if (view === "front" || view === "side" || view === "rear") {
     return { kind: view === "side" ? "side1" : view, car };
   }
   return { kind: "side", car: null };
@@ -85,7 +88,7 @@ export function createCompareScene(renderer: THREE.WebGLRenderer): CompareHandle
   const scratch = new THREE.Vector3();
 
   const place = (kind: ShotKind, only: string | null) => {
-    const lineup = kind === "side" || kind === "front34" || kind === "rear34";
+    const lineup = !only && (kind === "side" || kind === "front34" || kind === "rear34");
     views.forEach((entry, index) => {
       const show = lineup || entry.id === only;
       entry.view.root.visible = show;
@@ -148,13 +151,29 @@ export function createCompareScene(renderer: THREE.WebGLRenderer): CompareHandle
     const shot = new URLSearchParams(window.location.search).get("shot") || "side";
     const parsed = parseShot(shot);
     place(parsed.kind, parsed.car);
-    if (parsed.kind === "side" || parsed.kind === "side1") eye.set(16, 0.72, 0);
+    if (parsed.kind === "side" || parsed.kind === "side1" || parsed.kind === "wing") eye.set(16, 0.85, 0);
     else if (parsed.kind === "front") eye.set(0, 0.85, 12);
     else if (parsed.kind === "rear") eye.set(0, 0.85, -12);
     else if (parsed.kind === "front34") eye.set(12, 2.6, 13);
     else eye.set(12, 2.6, -13);
-    target.set(0, 0.58, 0);
-    const points = views.filter((entry) => entry.view.root.visible).flatMap(cornersOf);
+    target.set(0, parsed.kind === "wing" ? 0.85 : 0.58, parsed.kind === "wing" ? -1.4 : 0);
+    const visible = views.filter((entry) => entry.view.root.visible);
+    const points =
+      parsed.kind === "wing"
+        ? visible.flatMap((entry) => {
+            const box = BOUNDS[entry.id]!;
+            entry.view.root.updateWorldMatrix(true, true);
+            const pts: THREE.Vector3[] = [];
+            for (const x of [-0.2, box.halfW]) {
+              for (const y of [0.45, box.h]) {
+                for (const z of [box.z0, box.z0 + 1.1]) {
+                  pts.push(scratch.set(x, y, z).applyMatrix4(entry.view.root.matrixWorld).clone());
+                }
+              }
+            }
+            return pts;
+          })
+        : visible.flatMap(cornersOf);
     const width = renderer.domElement.width || 1;
     const height = renderer.domElement.height || 1;
     frame(width / height, points);
