@@ -37,7 +37,7 @@ type Level = {
 type Prepared = {
   lod1: Level;
   lod2: Level;
-  fit: { scale: THREE.Vector3; offset: THREE.Vector3 };
+  fit: { scale: THREE.Vector3; offset: THREE.Vector3; frontAxleY: number; frontZ: number };
 };
 
 export type RealCarInstance = {
@@ -58,7 +58,7 @@ export type CarAssetReport = {
 };
 
 const FILES: Record<Exclude<CarId, "surge">, { lod1: string; lod2: string; bytes: number }> = {
-  vector: { lod1: "/models/lod1/supercar.glb", lod2: "/models/lod2/supercar.glb", bytes: 2015316 + 332728 },
+  vector: { lod1: "/models/lod1/classic-coupe.glb", lod2: "/models/lod2/classic-coupe.glb", bytes: 294856 + 109220 },
   vanta: { lod1: "/models/lod1/electric-gt.glb", lod2: "/models/lod2/electric-gt.glb", bytes: 827560 + 114892 },
   aegis: { lod1: "/models/lod1/family-sedan.glb", lod2: "/models/lod2/family-sedan.glb", bytes: 1006584 + 122748 },
 };
@@ -142,7 +142,10 @@ async function loadAll(renderer: THREE.WebGLRenderer): Promise<void> {
   }
 }
 
-function fitOf(id: Exclude<CarId, "surge">, level: Level): { scale: THREE.Vector3; offset: THREE.Vector3 } {
+function fitOf(
+  id: Exclude<CarId, "surge">,
+  level: Level,
+): { scale: THREE.Vector3; offset: THREE.Vector3; frontAxleY: number; frontZ: number } {
   const layout = wheelLayout(id);
   const front = level.wheels.FL;
   const rear = level.wheels.RL;
@@ -161,6 +164,8 @@ function fitOf(id: Exclude<CarId, "surge">, level: Level): { scale: THREE.Vector
   return {
     scale: new THREE.Vector3(scaleX, scaleY, scaleZ),
     offset: new THREE.Vector3(0, WHEEL_CONTACT_Y - drop, offsetZ),
+    frontAxleY: frontPos.y,
+    frontZ: layout.frontZ,
   };
 }
 
@@ -175,7 +180,6 @@ function buildLevel(root: THREE.Object3D, id: Exclude<CarId, "surge">): Level {
     uprights[corner] = taken.upright;
     radius[corner] = taken.radius;
   }
-  if (id === "vector") editVectorMesh(root);
   const skipSpoiler = id === "vanta";
   let tris = 0;
   root.traverse((obj) => {
@@ -185,7 +189,6 @@ function buildLevel(root: THREE.Object3D, id: Exclude<CarId, "surge">): Level {
     const slot = slotOf(mesh.name || "", material?.name || "", skipSpoiler);
     mesh.userData.slot = slot;
     if (slot === "skip" || /plate/i.test(mesh.name) || (skipSpoiler && /spoiler/i.test(mesh.name))) mesh.visible = false;
-    if (id === "vector" && /^(wing|wing_skin)$/i.test(obj.name)) obj.visible = false;
     tris += triCount(mesh.geometry);
   });
   markShared(root);
@@ -310,13 +313,25 @@ export function instantiateRealCar(vehicleId: string, look: CarLook): RealCarIns
   for (const [level, distance] of levels) {
     const holder = new THREE.Group();
     holder.scale.copy(item.fit.scale);
-    holder.position.copy(item.fit.offset);
+    const mount = new THREE.Group();
+    if (vehicleId === "aegis") {
+      // Pitch about the front axle so the rear arch drops onto the tyre and the
+      // front arch stays where the uniform drop already put it.
+      const pitch = -0.012;
+      const axleY = item.fit.offset.y + item.fit.frontAxleY * item.fit.scale.y;
+      mount.rotation.x = pitch;
+      mount.position.set(0, axleY, item.fit.frontZ);
+      holder.position.set(0, item.fit.offset.y - axleY, item.fit.offset.z - item.fit.frontZ);
+    } else {
+      holder.position.copy(item.fit.offset);
+    }
     const clone = level.body.clone(true);
     assignMaterials(clone, materials, look, paint, brake);
     holder.add(clone);
+    mount.add(holder);
     if (vehicleId === "vanta" || vehicleId === "aegis") mountRaceKit(holder, vehicleId, level.modelBox, look.accent);
     if (vehicleId === "vector") mountVectorIdentity(holder, level.modelBox, look.accent, paint);
-    lod.addLevel(holder, distance, 0.15);
+    lod.addLevel(mount, distance, 0.15);
   }
   const wheels = {} as RealCarInstance["wheels"];
   const wheelLevel = showFull ? item.lod1 : item.lod2;
@@ -592,9 +607,9 @@ function mountVectorIdentity(parent: THREE.Object3D, bounds: THREE.Box3, accent:
     roughness: 0.18,
   });
   const dark = new THREE.MeshStandardMaterial({ color: 0x07080b, roughness: 0.5, metalness: 0.4 });
-  const deckY = 0.92;
-  const wingZ = -1.72;
-  const rise = 0.24;
+  const deckY = 0.8;
+  const wingZ = -1.98;
+  const rise = 0.18;
   const chord = 0.28;
   const span = 1.42;
   addPart(parent, "vec-wing", pooled("vector:wing", () => wingPlane(span, chord, 0.046)), carbon, 0, deckY + rise, wingZ);
@@ -607,14 +622,14 @@ function mountVectorIdentity(parent: THREE.Object3D, bounds: THREE.Box3, accent:
     addPart(parent, "vec-endplate", plate, carbon, side * (span * 0.5 + 0.004), deckY + rise, wingZ);
   }
   const diffuser = pooled("vector:diffuser", () => new THREE.BoxGeometry(0.95, 0.07, 0.32));
-  addPart(parent, "vec-diffuser", diffuser, carbon, 0, 0.2, bounds.min.z + 0.22);
+  addPart(parent, "vec-diffuser", diffuser, carbon, 0, 0.32, bounds.min.z + 0.42);
   const bar = pooled("vector:tailbar", () => new THREE.BoxGeometry(1.35, 0.035, 0.02));
   addPart(parent, "vec-tailbar", bar, neon, 0, 0.7, bounds.min.z + 0.06);
   const housingBar = pooled("vector:tail-housing", () => new THREE.BoxGeometry(1.45, 0.07, 0.03));
   addPart(parent, "vec-tail-housing", housingBar, dark, 0, 0.7, bounds.min.z + 0.08);
   for (const x of [-0.32, -0.12, 0.12, 0.32]) {
     const fin = pooled("vector:fin", () => new THREE.BoxGeometry(0.016, 0.08, 0.22));
-    addPart(parent, "vec-fin", fin, carbon, x, 0.24, bounds.min.z + 0.2);
+    addPart(parent, "vec-fin", fin, carbon, x, 0.36, bounds.min.z + 0.4);
   }
 }
 
@@ -655,92 +670,6 @@ function wingPlane(span: number, chord: number, thick: number): THREE.BufferGeom
   geo.setIndex(index);
   geo.computeVertexNormals();
   return geo;
-}
-
-function editVectorMesh(root: THREE.Object3D): void {
-  root.updateMatrixWorld(true);
-  const v = new THREE.Vector3();
-  root.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh || /wheel|caliper|steering/i.test(mesh.name)) return;
-    const geo = mesh.geometry.clone();
-    const source = geo.getAttribute("position");
-    if (!source) return;
-    const floats = new Float32Array(source.count * 3);
-    for (let i = 0; i < source.count; i++) {
-      floats[i * 3] = source.getX(i);
-      floats[i * 3 + 1] = source.getY(i);
-      floats[i * 3 + 2] = source.getZ(i);
-    }
-    const pos = new THREE.BufferAttribute(floats, 3);
-    geo.setAttribute("position", pos);
-    const world = mesh.matrixWorld;
-    const inv = world.clone().invert();
-    for (let i = 0; i < pos.count; i++) {
-      v.fromBufferAttribute(pos, i).applyMatrix4(world);
-      deformVector(v);
-      v.applyMatrix4(inv);
-      pos.setXYZ(i, v.x, v.y, v.z);
-    }
-    pos.needsUpdate = true;
-    geo.morphAttributes = {};
-    mesh.morphTargetInfluences = [];
-    mesh.morphTargetDictionary = {};
-    const index = geo.getIndex();
-    if (index && geo.groups.length) {
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      const keep: number[] = [];
-      const groups: Array<{ start: number; count: number; materialIndex: number }> = [];
-      for (const g of geo.groups) {
-        const materialIndex = g.materialIndex ?? 0;
-        const matName = mats[materialIndex]?.name || "";
-        let z = 0;
-        let n = 0;
-        const step = Math.max(1, Math.floor(g.count / 24));
-        for (let i = g.start; i < g.start + g.count; i += step) {
-          z += v.fromBufferAttribute(pos, index.getX(i)).applyMatrix4(world).z;
-          n += 1;
-        }
-        if (dropLamp(matName, mesh.name, n ? z / n : 0)) continue;
-        const start = keep.length;
-        for (let i = g.start; i < g.start + g.count; i++) keep.push(index.getX(i));
-        if (keep.length > start) groups.push({ start, count: keep.length - start, materialIndex });
-      }
-      geo.setIndex(keep);
-      geo.clearGroups();
-      for (const g of groups) geo.addGroup(g.start, g.count, g.materialIndex);
-    }
-    geo.computeBoundingBox();
-    geo.computeBoundingSphere();
-    mesh.geometry = geo;
-  });
-}
-
-/** Pull the wedge into a short upright nose and fill the cabin-forward slope. */
-function deformVector(v: THREE.Vector3): void {
-  if (v.z > 0.9) {
-    const u = Math.min(1, (v.z - 0.9) / 1.35);
-    v.z = 0.9 + u * 0.62;
-    if (v.y < 0.9) {
-      const t = Math.min(1, Math.max(0, (v.y - 0.04) / 0.7));
-      const ny = 0.42 + t * 0.26;
-      v.y = v.y * (1 - u * 0.92) + ny * (u * 0.92);
-    }
-    const limit = 0.98 - u * 0.18;
-    const ax = Math.abs(v.x);
-    if (ax > limit) v.x = Math.sign(v.x) * (limit + (ax - limit) * 0.2);
-  }
-  if (v.z > 0.35 && v.z < 1.35 && v.y > 0.55 && Math.abs(v.x) < 0.32) {
-    const along = Math.sin(Math.PI * Math.min(1, Math.max(0, (v.z - 0.35) / 0.9)));
-    v.y += 0.06 * along * Math.exp(-(v.x * v.x) / 0.014);
-  }
-}
-
-function dropLamp(matName: string, meshName: string, z: number): boolean {
-  if (/^(light_front|light_drl|light_rear|lens_red|reflector_red|lamp_housing)$/.test(matName)) return true;
-  if (matName === "lens_clear" && z > 0.4) return true;
-  if (matName === "glass" && meshName.startsWith("details")) return true;
-  return false;
 }
 
 function localPoint(
