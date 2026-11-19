@@ -113,6 +113,12 @@ export function ProfileScreen() {
           );
         })}
       </ul>
+      <p className="eyebrow section-label">Credits</p>
+      <p className="result-meta">
+        Vector is based on &quot;Race Car 01&quot; (https://sketchfab.com/3d-models/race-car-01-7243b4952d4341ff96d2c5a9ff431238)
+        by toddeppe (https://sketchfab.com/toddeppe), licensed under CC-BY-4.0
+        (https://creativecommons.org/licenses/by/4.0/). Vanta and Aegis use CC0 models by tevy.
+      </p>
       <div className="stack">
         <button type="button" className="btn" onClick={() => open("title", "browse")}>
           Back

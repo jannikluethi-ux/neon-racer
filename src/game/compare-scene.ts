@@ -18,7 +18,7 @@ const BOUNDS: Record<string, { z0: number; z1: number; halfW: number; h: number 
   aegis: { z0: -2.5, z1: 2.3, halfW: 1.4, h: 1.7 },
 };
 
-type ShotKind = "side" | "front34" | "rear34" | "front" | "side1" | "rear" | "wing";
+type ShotKind = "side" | "front34" | "rear34" | "front" | "side1" | "rear" | "wing" | "lock";
 
 function parseShot(shot: string): { kind: ShotKind; car: string | null } {
   if (shot === "side" || shot === "front" || shot === "rear" || shot === "front34" || shot === "rear34") {
@@ -28,6 +28,7 @@ function parseShot(shot: string): { kind: ShotKind; car: string | null } {
   if (!car || !BOUNDS[car]) return { kind: "side", car: null };
   if (view === "front34" || view === "rear34") return { kind: view, car };
   if (view === "wing") return { kind: "wing", car };
+  if (view === "lock") return { kind: "lock", car };
   if (view === "front" || view === "side" || view === "rear") {
     return { kind: view === "side" ? "side1" : view, car };
   }
@@ -157,6 +158,7 @@ export function createCompareScene(renderer: THREE.WebGLRenderer): CompareHandle
     else if (parsed.kind === "front") eye.set(0, 0.85, 12);
     else if (parsed.kind === "rear") eye.set(0, 0.85, -12);
     else if (parsed.kind === "front34") eye.set(12, 2.6, 13);
+    else if (parsed.kind === "lock") eye.set(6.5, 1.05, 11);
     else eye.set(12, 2.6, -13);
     target.set(0, parsed.kind === "wing" ? 0.85 : 0.58, parsed.kind === "wing" ? -1.4 : 0);
     const visible = views.filter((entry) => entry.view.root.visible);

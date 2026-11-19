@@ -6,7 +6,7 @@ import { WHEEL_CONTACT_Y } from "./contact";
 import { wheelLayout, type CarId } from "./car-model";
 
 /**
- * Real CC0 bodies for Vector, Vanta and Aegis.
+ * Imported bodies for Vector, Vanta and Aegis.
  * The mesh is scaled and moved so its axles sit on the existing wheel layout.
  * Physics positions are never edited to fit a file.
  */
@@ -35,6 +35,8 @@ type Level = {
 };
 
 type Prepared = {
+  /** Garage, carousel and the comparison scene. Same mesh as lod1 when a car has no finer file. */
+  show: Level;
   lod1: Level;
   lod2: Level;
   fit: { scale: THREE.Vector3; offset: THREE.Vector3; frontAxleY: number; frontZ: number };
@@ -52,13 +54,18 @@ export type CarAssetReport = {
   bytes: number;
   loadMs: number;
   textureBytes: number;
-  cars: Record<string, { lod1Tris: number; lod2Tris: number; lod1Draws: number; lod2Draws: number }>;
+  cars: Record<string, { showTris: number; showDraws: number; lod1Tris: number; lod2Tris: number; lod1Draws: number; lod2Draws: number }>;
   /** One full-detail car as shown in the garage and the comparison scene. */
   presentation: Record<string, { triangles: number; draws: number }>;
 };
 
-const FILES: Record<Exclude<CarId, "surge">, { lod1: string; lod2: string; bytes: number }> = {
-  vector: { lod1: "/models/lod1/classic-coupe.glb", lod2: "/models/lod2/classic-coupe.glb", bytes: 294856 + 109220 },
+const FILES: Record<Exclude<CarId, "surge">, { show?: string; lod1: string; lod2: string; bytes: number }> = {
+  vector: {
+    show: "/models/lod0/vector-gt3.glb",
+    lod1: "/models/lod1/vector-gt3.glb",
+    lod2: "/models/lod2/vector-gt3.glb",
+    bytes: 9659320 + 3109912 + 1016700,
+  },
   vanta: { lod1: "/models/lod1/electric-gt.glb", lod2: "/models/lod2/electric-gt.glb", bytes: 827560 + 114892 },
   aegis: { lod1: "/models/lod1/family-sedan.glb", lod2: "/models/lod2/family-sedan.glb", bytes: 1006584 + 122748 },
 };
@@ -84,6 +91,8 @@ export function carAssetReport(): CarAssetReport {
     const item = prepared.get(id);
     if (!item) continue;
     cars[id] = {
+      showTris: item.show.tris,
+      showDraws: item.show.draws,
       lod1Tris: item.lod1.tris,
       lod2Tris: item.lod2.tris,
       lod1Draws: item.lod1.draws,
@@ -130,11 +139,12 @@ async function loadAll(renderer: THREE.WebGLRenderer): Promise<void> {
   try {
     for (const id of Object.keys(FILES) as Array<Exclude<CarId, "surge">>) {
       const file = FILES[id];
-      const [lod1, lod2] = await Promise.all([
+      const [show, lod1, lod2] = await Promise.all([
+        file.show ? loader.loadAsync(file.show).then((gltf) => buildLevel(gltf.scene, id)) : Promise.resolve(null),
         loader.loadAsync(file.lod1).then((gltf) => buildLevel(gltf.scene, id)),
         loader.loadAsync(file.lod2).then((gltf) => buildLevel(gltf.scene, id)),
       ]);
-      prepared.set(id, { lod1, lod2, fit: fitOf(id, lod1) });
+      prepared.set(id, { show: show ?? lod1, lod1, lod2, fit: fitOf(id, show ?? lod1) });
     }
     loadMs = performance.now() - started;
   } finally {
@@ -185,8 +195,9 @@ function buildLevel(root: THREE.Object3D, id: Exclude<CarId, "surge">): Level {
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;
-    const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
-    const slot = slotOf(mesh.name || "", material?.name || "", skipSpoiler);
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const material = materials[0];
+    const slot = materials.length > 1 ? "multi" : slotOf(mesh.name || "", material?.name || "", skipSpoiler);
     mesh.userData.slot = slot;
     if (slot === "skip" || /plate/i.test(mesh.name) || (skipSpoiler && /spoiler/i.test(mesh.name))) mesh.visible = false;
     tris += triCount(mesh.geometry);
@@ -205,8 +216,17 @@ function buildLevel(root: THREE.Object3D, id: Exclude<CarId, "surge">): Level {
   return { tris, draws, body, wheels, uprights, radius, modelBox };
 }
 
+function objectByName(root: THREE.Object3D, name: string): THREE.Object3D | undefined {
+  const want = name.toLowerCase();
+  let found: THREE.Object3D | undefined;
+  root.traverse((obj) => {
+    if (!found && obj.name.toLowerCase() === want) found = obj;
+  });
+  return found;
+}
+
 function takeCorner(root: THREE.Object3D, corner: CarCorner): { wheel: THREE.Group; upright: THREE.Group; radius: number } {
-  const hub = root.getObjectByName(`wheel_${corner}`);
+  const hub = objectByName(root, `wheel_${corner}`);
   const wheel = new THREE.Group();
   wheel.name = `wheel-${corner}`;
   const upright = new THREE.Group();
@@ -227,7 +247,7 @@ function takeCorner(root: THREE.Object3D, corner: CarCorner): { wheel: THREE.Gro
   hub.quaternion.copy(hubQuat);
   wheel.add(hub);
 
-  const caliper = root.getObjectByName(`caliper_${corner}`);
+  const caliper = objectByName(root, `caliper_${corner}`);
   if (caliper) {
     caliper.updateWorldMatrix(true, true);
     const axleOnly = new THREE.Matrix4().setPosition(axle);
@@ -305,7 +325,7 @@ export function instantiateRealCar(vehicleId: string, look: CarLook): RealCarIns
   const lod = new THREE.LOD();
   const showFull = look.presentation === true || look.quality !== "low";
   const levels: Array<[Level, number]> = look.presentation
-    ? [[item.lod1, 0]]
+    ? [[item.show, 0]]
     : [
         [item.lod1, 0],
         [item.lod2, look.quality === "low" ? 0 : 18],
@@ -317,7 +337,7 @@ export function instantiateRealCar(vehicleId: string, look: CarLook): RealCarIns
     if (vehicleId === "aegis") {
       // Pitch about the front axle so the rear arch drops onto the tyre and the
       // front arch stays where the uniform drop already put it.
-      const pitch = -0.012;
+      const pitch = -0.034;
       const axleY = item.fit.offset.y + item.fit.frontAxleY * item.fit.scale.y;
       mount.rotation.x = pitch;
       mount.position.set(0, axleY, item.fit.frontZ);
@@ -326,15 +346,14 @@ export function instantiateRealCar(vehicleId: string, look: CarLook): RealCarIns
       holder.position.copy(item.fit.offset);
     }
     const clone = level.body.clone(true);
-    assignMaterials(clone, materials, look, paint, brake);
+    assignMaterials(clone, materials, look, paint, brake, vehicleId);
     holder.add(clone);
     mount.add(holder);
     if (vehicleId === "vanta" || vehicleId === "aegis") mountRaceKit(holder, vehicleId, level.modelBox, look.accent);
-    if (vehicleId === "vector") mountVectorIdentity(holder, level.modelBox, look.accent, paint);
     lod.addLevel(mount, distance, 0.15);
   }
   const wheels = {} as RealCarInstance["wheels"];
-  const wheelLevel = showFull ? item.lod1 : item.lod2;
+  const wheelLevel = look.presentation ? item.show : showFull ? item.lod1 : item.lod2;
   for (const corner of CORNERS) {
     const physR = corner.startsWith("F") ? layout.frontRadius : layout.rearRadius;
     const refR = item.lod1.radius[corner] || wheelLevel.radius[corner] || physR;
@@ -345,13 +364,13 @@ export function instantiateRealCar(vehicleId: string, look: CarLook): RealCarIns
     spin.position.y = visualR - physR;
     spin.scale.set(item.fit.scale.x * correct, item.fit.scale.y * correct, item.fit.scale.y * correct);
     const wheel = wheelLevel.wheels[corner].clone(true);
-    assignMaterials(wheel, materials, look, paint, brake);
+    assignMaterials(wheel, materials, look, paint, brake, vehicleId);
     spin.add(wheel);
     const upright = new THREE.Group();
     upright.position.y = visualR - physR;
     upright.scale.copy(spin.scale);
     const cal = wheelLevel.uprights[corner].clone(true);
-    assignMaterials(cal, materials, look, paint, brake);
+    assignMaterials(cal, materials, look, paint, brake, vehicleId);
     upright.add(cal);
     wheels[corner] = { spin, upright };
   }
@@ -383,36 +402,103 @@ function paintNormal(level: Level): THREE.Texture | null {
   return map;
 }
 
+function importedMaterial(
+  vehicleId: string,
+  source: THREE.Material,
+  cache: Map<string, THREE.Material>,
+  look: CarLook,
+  paint: THREE.MeshPhysicalMaterial,
+  brake: THREE.MeshStandardMaterial,
+): THREE.Material {
+  if (vehicleId === "vector" && source.name === "BODY") {
+    const key = "vector-body";
+    let mat = cache.get(key);
+    if (!mat) {
+      const body = (source as THREE.MeshStandardMaterial).clone();
+      retainTextures(body);
+      body.color.set(0xffffff);
+      body.emissive = new THREE.Color(0x000000);
+      body.emissiveIntensity = 1;
+      body.envMapIntensity = 0.85;
+      // The painted cyan is a pale albedo. ACES turns that pastel, so the paint
+      // pixels are pushed to a saturated neon and given a little glow. Black
+      // panels stay dark because they fail the cyan test.
+      body.onBeforeCompile = (shader) => {
+        shader.fragmentShader = shader.fragmentShader
+          .replace(
+            "#include <map_fragment>",
+            `#include <map_fragment>
+             {
+               float cyan = clamp(diffuseColor.g * 1.5 + diffuseColor.b * 0.8 - diffuseColor.r * 1.6, 0.0, 1.0);
+               float paint = smoothstep(0.08, 0.3, cyan);
+               diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.02, 0.95, 1.0), paint);
+             }`,
+          )
+          .replace(
+            "#include <emissivemap_fragment>",
+            `#include <emissivemap_fragment>
+             {
+               float cyan = clamp(diffuseColor.g * 1.5 + diffuseColor.b * 0.8 - diffuseColor.r * 1.6, 0.0, 1.0);
+               totalEmissiveRadiance += vec3(0.0, 0.42, 0.55) * smoothstep(0.08, 0.3, cyan);
+             }`,
+          );
+      };
+      body.customProgramCacheKey = () => "vector-neon-cyan";
+      cache.set(key, body);
+      mat = body;
+    }
+    return mat;
+  }
+  if (vehicleId === "vector" && (source.name === "CHASSIS" || source.name === "WHEEL" || source.name === "TIRE")) {
+    const key = `keep:${source.uuid}`;
+    let mat = cache.get(key);
+    if (!mat) {
+      mat = source.clone();
+      retainTextures(mat);
+      cache.set(key, mat);
+    }
+    return mat;
+  }
+  const slot = slotOf("", source.name || "", false);
+  if (slot === "paint") return paint;
+  if (slot === "tail") return brake;
+  if (slot === "skip") return source;
+  const key = `${slot}:${source.uuid}`;
+  let mat = cache.get(key);
+  if (!mat) {
+    mat = materialFor(slot, source, look);
+    cache.set(key, mat);
+  }
+  return mat;
+}
+
 function assignMaterials(
   root: THREE.Object3D,
   cache: Map<string, THREE.Material>,
   look: CarLook,
   paint: THREE.MeshPhysicalMaterial,
   brake: THREE.MeshStandardMaterial,
+  vehicleId: string,
 ): void {
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;
-    const source = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.Material;
-    const slot = (mesh.userData.slot as Slot | undefined) ?? slotOf(mesh.name || "", source?.name || "", false);
-    if (!source) return;
+    const sources = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as THREE.Material[];
+    if (!sources[0]) return;
+    if (sources.length > 1 || mesh.userData.slot === "multi") {
+      const next = sources.map((source) => importedMaterial(vehicleId, source, cache, look, paint, brake));
+      mesh.material = next;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return;
+    }
+    const source = sources[0];
+    const slot = (mesh.userData.slot as Slot | "multi" | undefined) ?? slotOf(mesh.name || "", source.name || "", false);
     if (slot === "skip") {
       mesh.visible = false;
       return;
     }
-    if (slot === "paint") {
-      mesh.material = paint;
-    } else if (slot === "tail") {
-      mesh.material = brake;
-    } else {
-      const key = `${slot}:${source.uuid}`;
-      let mat = cache.get(key);
-      if (!mat) {
-        mat = materialFor(slot, source, look);
-        cache.set(key, mat);
-      }
-      mesh.material = mat;
-    }
+    mesh.material = importedMaterial(vehicleId, source, cache, look, paint, brake);
     mesh.castShadow = slot !== "glass";
     mesh.receiveShadow = true;
   });
@@ -595,41 +681,6 @@ export function mountRaceKit(parent: THREE.Object3D, vehicleId: string, bounds: 
     addPart(parent, "kit-neck", neck, carbon, side * mountX, deckY - 0.01, wingZ + chord * 0.22);
     addPart(parent, "kit-foot", foot, carbon, side * mountX, deckY + 0.002, wingZ + chord * 0.28);
     addPart(parent, "kit-endplate", plate, carbon, side * (span * 0.5 + 0.004), deckY + rise, wingZ);
-  }
-}
-
-function mountVectorIdentity(parent: THREE.Object3D, bounds: THREE.Box3, accent: number, _paint: THREE.Material): void {
-  const carbon = new THREE.MeshStandardMaterial({ color: 0x14171c, roughness: 0.4, metalness: 0.62 });
-  const neon = new THREE.MeshStandardMaterial({
-    color: 0xf4fbff,
-    emissive: accent,
-    emissiveIntensity: 1.8,
-    roughness: 0.18,
-  });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x07080b, roughness: 0.5, metalness: 0.4 });
-  const deckY = 0.8;
-  const wingZ = -1.98;
-  const rise = 0.18;
-  const chord = 0.28;
-  const span = 1.42;
-  addPart(parent, "vec-wing", pooled("vector:wing", () => wingPlane(span, chord, 0.046)), carbon, 0, deckY + rise, wingZ);
-  const neck = pooled("vector:neck", () => swanNeck(rise - 0.02, 0.14, 0.03));
-  const foot = pooled("vector:foot", () => new THREE.BoxGeometry(0.12, 0.018, 0.16));
-  const plate = pooled("vector:endplate", () => new THREE.BoxGeometry(0.016, 0.15, chord + 0.02));
-  for (const side of [-1, 1]) {
-    addPart(parent, "vec-neck", neck, carbon, side * 0.26, deckY - 0.01, wingZ + 0.08);
-    addPart(parent, "vec-foot", foot, carbon, side * 0.26, deckY + 0.002, wingZ + 0.12);
-    addPart(parent, "vec-endplate", plate, carbon, side * (span * 0.5 + 0.004), deckY + rise, wingZ);
-  }
-  const diffuser = pooled("vector:diffuser", () => new THREE.BoxGeometry(0.95, 0.07, 0.32));
-  addPart(parent, "vec-diffuser", diffuser, carbon, 0, 0.32, bounds.min.z + 0.42);
-  const bar = pooled("vector:tailbar", () => new THREE.BoxGeometry(1.35, 0.035, 0.02));
-  addPart(parent, "vec-tailbar", bar, neon, 0, 0.7, bounds.min.z + 0.06);
-  const housingBar = pooled("vector:tail-housing", () => new THREE.BoxGeometry(1.45, 0.07, 0.03));
-  addPart(parent, "vec-tail-housing", housingBar, dark, 0, 0.7, bounds.min.z + 0.08);
-  for (const x of [-0.32, -0.12, 0.12, 0.32]) {
-    const fin = pooled("vector:fin", () => new THREE.BoxGeometry(0.016, 0.08, 0.22));
-    addPart(parent, "vec-fin", fin, carbon, x, 0.36, bounds.min.z + 0.4);
   }
 }
 

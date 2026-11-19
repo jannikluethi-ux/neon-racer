@@ -505,9 +505,14 @@ export function createCarView(color: number, vehicleId: string, rival = false, p
   numberMat.polygonOffsetUnits = -2;
   const plateH = 0.39 * dims.numberScale;
   const rearNumber = new THREE.Mesh(new THREE.PlaneGeometry(plateH * 1.6, plateH), numberMat);
-  const sideZ = real ? (real.bounds.max.z + real.bounds.min.z) * 0.08 : -0.2;
-  const sideY = real ? real.bounds.min.y + (real.bounds.max.y - real.bounds.min.y) * 0.46 : dims.beltY - 0.02;
-  const sideX = real ? real.bounds.max.x * 0.9 : bodyWidthAt(vehicleId, -0.3) * 0.72;
+  const vector = vehicleId === "vector" && real;
+  const sideZ = vector ? real.bounds.max.z * 0.18 : real ? (real.bounds.max.z + real.bounds.min.z) * 0.08 : -0.2;
+  const sideY = vector
+    ? real.bounds.min.y + (real.bounds.max.y - real.bounds.min.y) * 0.33
+    : real
+      ? real.bounds.min.y + (real.bounds.max.y - real.bounds.min.y) * 0.46
+      : dims.beltY - 0.02;
+  const sideX = vector ? real.bounds.max.x * 0.97 : real ? real.bounds.max.x * 0.9 : bodyWidthAt(vehicleId, -0.3) * 0.72;
   rearNumber.position.set(
     0,
     real ? real.bounds.min.y + (real.bounds.max.y - real.bounds.min.y) * 0.42 : dims.plateY,
@@ -519,7 +524,14 @@ export function createCarView(color: number, vehicleId: string, rival = false, p
     const sideNumber = new THREE.Mesh(new THREE.PlaneGeometry(plateH * 1.5, plateH * 0.86), numberMat.clone());
     sideNumber.position.set(side * sideX, sideY, sideZ);
     sideNumber.rotation.y = side * Math.PI * 0.5;
+    if (vector) sideNumber.scale.set(0.72, 0.72, 1);
     chassis.add(sideNumber);
+  }
+  if (vector) {
+    const hoodNumber = new THREE.Mesh(new THREE.PlaneGeometry(plateH * 1.15, plateH * 0.72), numberMat.clone());
+    hoodNumber.position.set(0.06, 0.6, real.bounds.max.z * 0.32);
+    hoodNumber.rotation.x = -0.62;
+    chassis.add(hoodNumber);
   }
 
   // The prototype's full-width accent blade sticks out past the pointed nose.

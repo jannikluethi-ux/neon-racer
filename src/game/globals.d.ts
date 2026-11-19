@@ -47,7 +47,7 @@ declare global {
         bytes: number;
         loadMs: number;
         textureBytes: number;
-        cars: Record<string, { lod1Tris: number; lod2Tris: number; lod1Draws: number; lod2Draws: number }>;
+        cars: Record<string, { showTris: number; showDraws: number; lod1Tris: number; lod2Tris: number; lod1Draws: number; lod2Draws: number }>;
         presentation: Record<string, { triangles: number; draws: number }>;
       };
       renderStats: () => {
