@@ -1,0 +1,20 @@
+Vector GT3 car model - credits
+==============================
+
+This work is based on "Race Car 01" (https://sketchfab.com/3d-models/race-car-01-7243b4952d4341ff96d2c5a9ff431238) by toddeppe (https://sketchfab.com/toddeppe) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Modifications (made for Neon Racer, Nov 2026):
+- Branding removed from the textures: "24h LE MANS" logos and "01" race numbers
+  painted out (number panels left blank), two small sponsor marks removed from the
+  bonnet, GOODYEAR / EAGLE lettering removed from the tyre sidewalls (colour and
+  normal map) and from the windscreen banner.
+- Livery recoloured from green to cyan; no new text or logos added.
+- Interior reduced to a light, untextured version (LOD0 only), antenna and small
+  parts simplified or removed, meshes merged by material, geometry reduced to
+  three levels of detail (about 60k / 25k / 8k triangles), textures resized and
+  re-encoded (PNG/JPEG, plus KTX2 variants).
+- Re-centred (ground at y=0, midpoint between the axles at the origin), wheels
+  split into named nodes for the game's wheel rig.
+
+The modified model is shared under the same CC-BY-4.0 terms. Keep the credit line
+above in the game's credits / about screen and in the repository.
