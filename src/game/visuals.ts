@@ -167,6 +167,19 @@ function numberTexture(role: string, vehicleId: string, accent: number): THREE.C
   }, 128, 80);
 }
 
+/** Opaque plate that fills its quad, used where a blank livery panel needs covering. */
+function filledNumberTexture(text: string): THREE.CanvasTexture {
+  return canvasTex((g, w, h) => {
+    g.fillStyle = "#07090d";
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = "#f4fbff";
+    g.font = "900 118px Arial Narrow, Arial, sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(text, w / 2, h / 2 + 4);
+  }, 256, 168);
+}
+
 /** Sidewall banding, shoulder lettering stripe and tread blocks for the tire. */
 function tireTexture(): THREE.CanvasTexture {
   const tex = canvasTex((g, w, h) => {
@@ -497,41 +510,48 @@ export function createCarView(color: number, vehicleId: string, rival = false, p
   glow.scale.set(0.01, 0.01, 0.01);
   glow.visible = false;
 
-  // Race number plates: rear panel plus one per door.
-  const numberMap = numberTexture(role, vehicleId, look.accent);
-  const numberMat = new THREE.MeshBasicMaterial({ map: numberMap, transparent: true, toneMapped: false, depthWrite: false });
+  // Race number plates: rear panel plus one per door. Vanta's plates are painted
+  // into the body, so a second set would sit on top of #04.
+  const vector = vehicleId === "vector" && real;
+  if (!(vehicleId === "vanta" && real)) {
+  const numberMap = vector ? filledNumberTexture(raceNumberFor(role, vehicleId)) : numberTexture(role, vehicleId, look.accent);
+  const numberMat = new THREE.MeshBasicMaterial({
+    map: numberMap,
+    transparent: !vector,
+    toneMapped: false,
+    depthWrite: false,
+  });
   numberMat.polygonOffset = true;
   numberMat.polygonOffsetFactor = -1;
   numberMat.polygonOffsetUnits = -2;
   const plateH = 0.39 * dims.numberScale;
-  const rearNumber = new THREE.Mesh(new THREE.PlaneGeometry(plateH * 1.6, plateH), numberMat);
-  const vector = vehicleId === "vector" && real;
-  const sideZ = vector ? real.bounds.max.z * 0.18 : real ? (real.bounds.max.z + real.bounds.min.z) * 0.08 : -0.2;
+  const rearNumber = new THREE.Mesh(
+    new THREE.PlaneGeometry(vector ? 0.72 : plateH * 1.6, vector ? 0.42 : plateH),
+    numberMat,
+  );
+  const sideZ = vector ? real.bounds.max.z * 0.16 : real ? (real.bounds.max.z + real.bounds.min.z) * 0.08 : -0.2;
   const sideY = vector
-    ? real.bounds.min.y + (real.bounds.max.y - real.bounds.min.y) * 0.33
+    ? real.bounds.min.y + (real.bounds.max.y - real.bounds.min.y) * 0.3
     : real
       ? real.bounds.min.y + (real.bounds.max.y - real.bounds.min.y) * 0.46
       : dims.beltY - 0.02;
-  const sideX = vector ? real.bounds.max.x * 0.97 : real ? real.bounds.max.x * 0.9 : bodyWidthAt(vehicleId, -0.3) * 0.72;
+  const sideX = vector ? real.bounds.max.x * 0.985 : real ? real.bounds.max.x * 0.9 : bodyWidthAt(vehicleId, -0.3) * 0.72;
   rearNumber.position.set(
     0,
-    real ? real.bounds.min.y + (real.bounds.max.y - real.bounds.min.y) * 0.42 : dims.plateY,
+    real ? real.bounds.min.y + (real.bounds.max.y - real.bounds.min.y) * (vector ? 0.34 : 0.42) : dims.plateY,
     real ? real.bounds.min.z - 0.012 : dims.tailZ - 0.03,
   );
   rearNumber.rotation.y = Math.PI;
   chassis.add(rearNumber);
   for (const side of [-1, 1]) {
-    const sideNumber = new THREE.Mesh(new THREE.PlaneGeometry(plateH * 1.5, plateH * 0.86), numberMat.clone());
+    const sideNumber = new THREE.Mesh(
+      new THREE.PlaneGeometry(vector ? 0.62 : plateH * 1.5, vector ? 0.5 : plateH * 0.86),
+      numberMat.clone(),
+    );
     sideNumber.position.set(side * sideX, sideY, sideZ);
     sideNumber.rotation.y = side * Math.PI * 0.5;
-    if (vector) sideNumber.scale.set(0.72, 0.72, 1);
     chassis.add(sideNumber);
   }
-  if (vector) {
-    const hoodNumber = new THREE.Mesh(new THREE.PlaneGeometry(plateH * 1.15, plateH * 0.72), numberMat.clone());
-    hoodNumber.position.set(0.06, 0.6, real.bounds.max.z * 0.32);
-    hoodNumber.rotation.x = -0.62;
-    chassis.add(hoodNumber);
   }
 
   // The prototype's full-width accent blade sticks out past the pointed nose.

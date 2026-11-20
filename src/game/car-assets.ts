@@ -66,7 +66,12 @@ const FILES: Record<Exclude<CarId, "surge">, { show?: string; lod1: string; lod2
     lod2: "/models/lod2/vector-gt3.glb",
     bytes: 9659320 + 3109912 + 1016700,
   },
-  vanta: { lod1: "/models/lod1/electric-gt.glb", lod2: "/models/lod2/electric-gt.glb", bytes: 827560 + 114892 },
+  vanta: {
+    show: "/models/lod0/vanta-gt4.glb",
+    lod1: "/models/lod1/vanta-gt4.glb",
+    lod2: "/models/lod2/vanta-gt4.glb",
+    bytes: 536624 + 271780 + 116272,
+  },
   aegis: { lod1: "/models/lod1/family-sedan.glb", lod2: "/models/lod2/family-sedan.glb", bytes: 1006584 + 122748 },
 };
 
@@ -169,7 +174,7 @@ function fitOf(
   const scaleY = scaleZ;
   // Visual body drop only. The arch crown is already close to the tyre, so this
   // is the extra ride-height the fender can take before the tyre meets the lip.
-  const drop = id === "aegis" ? 0.078 : id === "vanta" ? 0.052 : 0;
+  const drop = id === "aegis" ? 0.078 : 0;
   const offsetZ = layout.frontZ - frontPos.z * scaleZ;
   return {
     scale: new THREE.Vector3(scaleX, scaleY, scaleZ),
@@ -179,7 +184,110 @@ function fitOf(
   };
 }
 
+/**
+ * The GLASS primitive includes the windscreen and roof canopy, and also a
+ * skin over the hood, sills, splitter and rear arch. Only the greenhouse
+ * stays glass. The rest is copied onto an opaque shell: red above the belt,
+ * dark carbon below it. Grey rear faces on the body are carbon too.
+ */
+function sealVantaShell(root: THREE.Object3D): void {
+  let body: THREE.Mesh | undefined;
+  let glass: THREE.Mesh | undefined;
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const material = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.Material | undefined;
+    if (material?.name === "BODY" && !body) body = mesh;
+    if (material?.name === "GLASS" && !glass) glass = mesh;
+  });
+  if (body) paintVantaCarbon(body);
+  const index = glass?.geometry.getIndex();
+  const position = glass?.geometry.getAttribute("position");
+  const normalAttr = glass?.geometry.getAttribute("normal");
+  if (!body || !glass || !index || !position || !normalAttr) return;
+  root.updateMatrixWorld(true);
+  const keep: number[] = [];
+  const shellPos: number[] = [];
+  const shellNor: number[] = [];
+  const shellCol: number[] = [];
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const edge = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  const normal = new THREE.Vector3();
+  const local = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  const localN = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  for (let t = 0; t < index.count; t += 3) {
+    const ids = [index.getX(t), index.getX(t + 1), index.getX(t + 2)];
+    for (let k = 0; k < 3; k++) {
+      local[k]!.fromBufferAttribute(position, ids[k]!);
+      localN[k]!.fromBufferAttribute(normalAttr, ids[k]!);
+    }
+    a.copy(local[0]!).applyMatrix4(glass.matrixWorld);
+    b.copy(local[1]!).applyMatrix4(glass.matrixWorld);
+    c.copy(local[2]!).applyMatrix4(glass.matrixWorld);
+    center.copy(a).add(b).add(c).multiplyScalar(1 / 3);
+    edge.subVectors(c, a);
+    normal.subVectors(b, a).cross(edge).normalize();
+    if (isVantaWindow(center, normal)) {
+      keep.push(ids[0]!, ids[1]!, ids[2]!);
+      continue;
+    }
+    const carbon = center.y < 0.48 || center.z < -1.15;
+    const cr = carbon ? 0.02 : 0.42;
+    const cg = carbon ? 0.02 : 0.012;
+    const cb = carbon ? 0.02 : 0.016;
+    for (let k = 0; k < 3; k++) {
+      shellPos.push(local[k]!.x, local[k]!.y, local[k]!.z);
+      shellNor.push(localN[k]!.x, localN[k]!.y, localN[k]!.z);
+      shellCol.push(cr, cg, cb);
+    }
+  }
+  if (shellPos.length === 0) return;
+  const shell = new THREE.BufferGeometry();
+  shell.setAttribute("position", new THREE.Float32BufferAttribute(shellPos, 3));
+  shell.setAttribute("normal", new THREE.Float32BufferAttribute(shellNor, 3));
+  shell.setAttribute("color", new THREE.Float32BufferAttribute(shellCol, 3));
+  const shellMesh = new THREE.Mesh(shell, body.material);
+  shellMesh.name = "BodyShell";
+  shellMesh.position.copy(glass.position);
+  shellMesh.quaternion.copy(glass.quaternion);
+  shellMesh.scale.copy(glass.scale);
+  glass.parent?.add(shellMesh);
+  glass.geometry.setIndex(keep);
+  glass.visible = keep.length > 0;
+}
+
+function isVantaWindow(center: THREE.Vector3, normal: THREE.Vector3): boolean {
+  const inCabin = center.z < 1.35 && center.z > -1.2 && Math.abs(center.x) < 0.9;
+  const canopy = inCabin && center.y > 0.78;
+  const windscreen = inCabin && center.y > 0.5 && center.z > 0.05 && normal.z > 0.18 && normal.y < 0.93;
+  const sideGlass = inCabin && center.y > 0.6 && center.y < 1.2 && Math.abs(normal.x) > 0.55;
+  return canopy || windscreen || sideGlass;
+}
+
+function paintVantaCarbon(body: THREE.Mesh): void {
+  const color = body.geometry.getAttribute("color");
+  const position = body.geometry.getAttribute("position");
+  if (!color || !position || color.itemSize < 3) return;
+  body.updateWorldMatrix(true, false);
+  const point = new THREE.Vector3();
+  for (let i = 0; i < color.count; i++) {
+    const r = color.getX(i);
+    const g = color.getY(i);
+    const b = color.getZ(i);
+    const grey = r > 0.4 && g > 0.4 && b > 0.4;
+    if (!grey) continue;
+    point.fromBufferAttribute(position, i).applyMatrix4(body.matrixWorld);
+    if (point.z > -0.6) continue;
+    color.setXYZ(i, 0.02, 0.02, 0.02);
+  }
+  color.needsUpdate = true;
+}
+
 function buildLevel(root: THREE.Object3D, id: Exclude<CarId, "surge">): Level {
+  if (id === "vanta") sealVantaShell(root);
   root.updateMatrixWorld(true);
   const wheels = {} as Record<CarCorner, THREE.Group>;
   const uprights = {} as Record<CarCorner, THREE.Group>;
@@ -190,16 +298,15 @@ function buildLevel(root: THREE.Object3D, id: Exclude<CarId, "surge">): Level {
     uprights[corner] = taken.upright;
     radius[corner] = taken.radius;
   }
-  const skipSpoiler = id === "vanta";
   let tris = 0;
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     const material = materials[0];
-    const slot = materials.length > 1 ? "multi" : slotOf(mesh.name || "", material?.name || "", skipSpoiler);
+    const slot = materials.length > 1 ? "multi" : slotOf(mesh.name || "", material?.name || "", false);
     mesh.userData.slot = slot;
-    if (slot === "skip" || /plate/i.test(mesh.name) || (skipSpoiler && /spoiler/i.test(mesh.name))) mesh.visible = false;
+    if (slot === "skip" || /plate/i.test(mesh.name)) mesh.visible = false;
     tris += triCount(mesh.geometry);
   });
   markShared(root);
@@ -349,7 +456,7 @@ export function instantiateRealCar(vehicleId: string, look: CarLook): RealCarIns
     assignMaterials(clone, materials, look, paint, brake, vehicleId);
     holder.add(clone);
     mount.add(holder);
-    if (vehicleId === "vanta" || vehicleId === "aegis") mountRaceKit(holder, vehicleId, level.modelBox, look.accent);
+    if (vehicleId === "aegis") mountRaceKit(holder, vehicleId, level.modelBox, look.accent);
     lod.addLevel(mount, distance, 0.15);
   }
   const wheels = {} as RealCarInstance["wheels"];
@@ -419,33 +526,85 @@ function importedMaterial(
       body.color.set(0xffffff);
       body.emissive = new THREE.Color(0x000000);
       body.emissiveIntensity = 1;
-      body.envMapIntensity = 0.85;
-      // The painted cyan is a pale albedo. ACES turns that pastel, so the paint
-      // pixels are pushed to a saturated neon and given a little glow. Black
-      // panels stay dark because they fail the cyan test.
+      body.metalness = 0;
+      body.roughness = 0.48;
+      body.envMapIntensity = 0.2;
+      const clearcoat = body as THREE.MeshPhysicalMaterial;
+      if (clearcoat.clearcoat !== undefined) clearcoat.clearcoat = 0.08;
+      // Stay under the ACES shoulder. A brighter cyan clips to pale mint; this
+      // one keeps red at zero and green level with blue.
       body.onBeforeCompile = (shader) => {
+        shader.vertexShader = shader.vertexShader
+          .replace("#include <common>", "#include <common>\nvarying vec3 vLocalPos;")
+          .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLocalPos = position;");
         shader.fragmentShader = shader.fragmentShader
+          .replace("#include <common>", "#include <common>\nvarying vec3 vLocalPos;")
           .replace(
             "#include <map_fragment>",
             `#include <map_fragment>
              {
-               float cyan = clamp(diffuseColor.g * 1.5 + diffuseColor.b * 0.8 - diffuseColor.r * 1.6, 0.0, 1.0);
-               float paint = smoothstep(0.08, 0.3, cyan);
-               diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.02, 0.95, 1.0), paint);
+               float cyan = clamp(diffuseColor.g + diffuseColor.b * 1.15 - diffuseColor.r * 2.4, 0.0, 1.0);
+               float paint = smoothstep(0.04, 0.16, cyan);
+               // The blank hood panel is the pale patch forward of the cabin.
+               float hood = step(0.42, vLocalPos.z) * step(-0.05, vLocalPos.y) * step(vLocalPos.y, 0.28) * step(abs(vLocalPos.x), 0.35);
+               diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.012), paint * hood);
+               diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.0, 0.07, 0.08), paint * (1.0 - hood));
              }`,
           )
           .replace(
             "#include <emissivemap_fragment>",
             `#include <emissivemap_fragment>
              {
-               float cyan = clamp(diffuseColor.g * 1.5 + diffuseColor.b * 0.8 - diffuseColor.r * 1.6, 0.0, 1.0);
-               totalEmissiveRadiance += vec3(0.0, 0.42, 0.55) * smoothstep(0.08, 0.3, cyan);
+               float cyan = clamp(diffuseColor.g + diffuseColor.b * 1.15 - diffuseColor.r * 2.4, 0.0, 1.0);
+               float paint = smoothstep(0.04, 0.16, cyan);
+               float hood = step(0.42, vLocalPos.z) * step(-0.05, vLocalPos.y) * step(vLocalPos.y, 0.28) * step(abs(vLocalPos.x), 0.35);
+               totalEmissiveRadiance += vec3(0.0, 0.5, 0.58) * paint * (1.0 - hood);
              }`,
           );
       };
-      body.customProgramCacheKey = () => "vector-neon-cyan";
+      body.customProgramCacheKey = () => "vector-neon-cyan-v6";
       cache.set(key, body);
       mat = body;
+    }
+    return mat;
+  }
+  if (vehicleId === "vanta" && source.name === "GLASS") {
+    const key = "vanta-glass";
+    let mat = cache.get(key);
+    if (!mat) {
+      mat = new THREE.MeshPhysicalMaterial({
+        name: "GLASS",
+        color: 0x0c1218,
+        roughness: 0.05,
+        metalness: 0.02,
+        transparent: true,
+        opacity: 0.62,
+        depthWrite: false,
+        transmission: 0,
+        side: THREE.DoubleSide,
+        envMapIntensity: 0.85,
+        clearcoat: 1,
+        clearcoatRoughness: 0.05,
+      });
+      cache.set(key, mat);
+    }
+    return mat;
+  }
+  if (vehicleId === "vanta" && /^(BODY|LIGHT|NUMBER|CALIPER|WHEEL)$/.test(source.name)) {
+    const key = `vanta:${source.name}:${source.uuid}`;
+    let mat = cache.get(key);
+    if (!mat) {
+      const opaque = source.clone() as THREE.MeshPhysicalMaterial;
+      retainTextures(opaque);
+      opaque.transparent = false;
+      opaque.opacity = 1;
+      opaque.depthWrite = true;
+      opaque.depthTest = true;
+      opaque.alphaTest = 0;
+      opaque.transmission = 0;
+      opaque.blending = THREE.NormalBlending;
+      cache.set(key, opaque);
+      mat = opaque;
     }
     return mat;
   }
