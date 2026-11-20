@@ -1,0 +1,32 @@
+Aegis #88 car model - credits
+=============================
+
+This work is based on "2026 Kralzfiller Trackday V10" (https://sketchfab.com/3d-models/2026-kralzfiller-trackday-v10-d486b2662d314db8b5afc71bd1488c3c) by Dave Love SketchFab (https://sketchfab.com/Tyler_Dave) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Modifications (made for Neon Racer, Nov 2026):
+- Branding and text removed: the donut-textured nose badge, the glowing
+  "TRACKDAY V10" wing text and a second "Text" mesh on the wing, two
+  dashboard display plates carrying another game's material name, and a
+  mechanical texture sheet with real manufacturer logos (all source
+  textures were dropped; every surface now uses a plain colour atlas).
+- Livery repainted as a deep electric blue with gloss-black carbon aero,
+  neon-cyan brake calipers and gunmetal rims. Race number #88 added as
+  black plates with white numerals and a cyan keyline on both cockpit-pod
+  sides and on the nose.
+- Removed: wiper arms / rod across the canopy, a duplicate fully transparent
+  canopy shell, two small sidepod vanes that covered the number area, and
+  two stray micro-quads.
+- Canopy glass re-made as a single dark-tinted shell (alpha 0.90, no
+  transmission). All materials double-sided.
+- Wheels split into Wheel_FL/FR/RL/RR (tyre, rim, cap, centre nut, barrel,
+  disc) and Caliper_FL/FR/RL/RR (caliper + upright), origins at the wheel
+  centres. Wheel diameters, wheelbase and track are the source proportions,
+  uniformly scaled.
+- Geometry reduced with meshoptimizer (gltfpack) to three levels of detail
+  (about 61k / 24k / 8k triangles), merged to 4 materials / 11 draw calls
+  per LOD. Meshopt + KTX2 (UASTC) variants included.
+- Re-centred and scaled: metres, ground at y=0, midpoint between the axles at
+  the origin, length 4.50 m.
+
+The modified model is shared under the same CC-BY-4.0 terms. Keep the credit
+line above in the game's credits / about screen and in the repository.
