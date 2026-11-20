@@ -346,13 +346,12 @@ function blankAegisBakedPlates(kept: THREE.MeshPhysicalMaterial): void {
          {
            vec3 p = vAegisPos;
            float nose = step(1.55, p.z) * step(p.z, 2.2) * step(0.08, p.y) * step(p.y, 0.6) * step(abs(p.x), 0.62);
-           float doorL = step(0.42, p.x) * step(p.x, 0.82) * step(0.18, p.y) * step(p.y, 0.52) * step(-0.05, p.z) * step(p.z, 0.5);
-           float doorR = step(-0.82, p.x) * step(p.x, -0.5) * step(0.18, p.y) * step(p.y, 0.52) * step(-0.35, p.z) * step(p.z, 0.25);
-           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(${paint.r.toFixed(4)}, ${paint.g.toFixed(4)}, ${paint.b.toFixed(4)}), max(nose, max(doorL, doorR)));
+           float side = step(0.25, p.y) * step(p.y, 0.85) * step(-0.35, p.z) * step(p.z, 0.95) * step(0.4, abs(p.x));
+           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(${paint.r.toFixed(4)}, ${paint.g.toFixed(4)}, ${paint.b.toFixed(4)}), max(nose, side));
          }`,
       );
   };
-  kept.customProgramCacheKey = () => "aegis-plates-v4";
+  kept.customProgramCacheKey = () => "aegis-plates-v6";
 }
 
 const plateTextures = new Map<string, THREE.CanvasTexture>();
@@ -381,12 +380,11 @@ function racePlateTexture(label: string, border: string): THREE.CanvasTexture {
     };
     const draw4 = (x: number) => {
       g.beginPath();
-      g.moveTo(x + 36, 48);
-      g.lineTo(x + 36, 208);
-      g.moveTo(x - 40, 128);
-      g.lineTo(x + 48, 128);
-      g.moveTo(x - 40, 128);
-      g.lineTo(x + 8, 48);
+      g.moveTo(x - 8, 52);
+      g.lineTo(x - 46, 138);
+      g.lineTo(x + 48, 138);
+      g.moveTo(x + 24, 52);
+      g.lineTo(x + 24, 208);
       g.stroke();
     };
     const draw5 = (x: number) => {
@@ -443,7 +441,8 @@ function dressVantaRearPlate(root: THREE.Object3D): void {
     let rear = false;
     for (const id of ids) {
       point.fromBufferAttribute(position, id);
-      if (point.z < -0.8) rear = true;
+      // Rear plate, and the faint hood number (local z > 0.4).
+      if (point.z < -0.8 || point.z > 0.4) rear = true;
     }
     if (!rear) {
       keep.push(ids[0]!, ids[1]!, ids[2]!);
@@ -453,21 +452,20 @@ function dressVantaRearPlate(root: THREE.Object3D): void {
   }
   mesh.geometry.setIndex(keep);
   if (box.isEmpty()) return;
-  mesh.updateWorldMatrix(true, false);
-  const worldCenter = box.getCenter(new THREE.Vector3()).applyMatrix4(mesh.matrixWorld);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
   const plate = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.34, 0.22),
+    new THREE.PlaneGeometry(Math.max(0.12, size.x * 1.15), Math.max(0.08, size.y * 1.2)),
     new THREE.MeshBasicMaterial({
       map: racePlateTexture("04", "#f2f2f2"),
       side: THREE.DoubleSide,
     }),
   );
   plate.name = "rear-number";
-  root.updateWorldMatrix(true, false);
-  root.add(plate);
-  plate.position.copy(worldCenter).applyMatrix4(root.matrixWorld.clone().invert());
-  plate.position.z -= 0.015;
+  plate.frustumCulled = false;
+  plate.position.set(center.x, center.y, box.min.z - 0.012);
   plate.rotation.y = Math.PI;
+  mesh.add(plate);
 }
 
 function dressAegisNumbers(root: THREE.Object3D): void {
@@ -481,44 +479,20 @@ function dressAegisNumbers(root: THREE.Object3D): void {
   });
   if (!body) return;
   const mesh: THREE.Mesh = body;
-  const position = mesh.geometry.getAttribute("position");
-  const uv = mesh.geometry.getAttribute("uv");
-  const index = mesh.geometry.getIndex();
-  if (!position || !uv || !index) return;
-  const inDoor = (u: number, v: number) => u > 0.07 && u < 0.43 && v > 0.29 && v < 0.46;
-  const left = new THREE.Box3();
-  const right = new THREE.Box3();
-  const center = new THREE.Vector3();
-  for (let t = 0; t < index.count; t += 3) {
-    const ids = [index.getX(t), index.getX(t + 1), index.getX(t + 2)];
-    const u = (uv.getX(ids[0]!) + uv.getX(ids[1]!) + uv.getX(ids[2]!)) / 3;
-    const v = (uv.getY(ids[0]!) + uv.getY(ids[1]!) + uv.getY(ids[2]!)) / 3;
-    if (!inDoor(u, v)) continue;
-    center.set(0, 0, 0);
-    for (const id of ids) center.add(new THREE.Vector3().fromBufferAttribute(position, id));
-    center.multiplyScalar(1 / 3);
-    (center.x >= 0 ? left : right).expandByPoint(center);
-  }
-  const material = new THREE.MeshStandardMaterial({
+  const material = new THREE.MeshBasicMaterial({
     map: racePlateTexture("88", "#3ec6ff"),
-    roughness: 0.4,
-    metalness: 0.04,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
+    side: THREE.FrontSide,
   });
-  const addDoor = (box: THREE.Box3) => {
-    if (box.isEmpty()) return;
-    const mid = box.getCenter(new THREE.Vector3());
-    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.22), material);
+  // Sit just outside the door skin so the plate stays flat and fully visible.
+  const addDoor = (x: number) => {
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.18), material);
     plate.name = "door-number";
-    const outward = mid.x >= 0 ? 1 : -1;
-    plate.position.set(mid.x + outward * 0.012, mid.y, mid.z);
-    plate.rotation.y = outward > 0 ? -Math.PI / 2 : Math.PI / 2;
+    plate.position.set(x, 0.56, 0.62);
+    plate.rotation.y = x > 0 ? Math.PI / 2 : -Math.PI / 2;
     mesh.parent?.add(plate);
   };
-  addDoor(left);
-  addDoor(right);
+  addDoor(0.99);
+  addDoor(-0.99);
   const hood = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.2), material);
   hood.name = "nose-number";
   hood.position.set(0, 0.66, 1.5);
