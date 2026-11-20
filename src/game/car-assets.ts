@@ -145,9 +145,9 @@ async function loadAll(renderer: THREE.WebGLRenderer): Promise<void> {
     for (const id of Object.keys(FILES) as Array<Exclude<CarId, "surge">>) {
       const file = FILES[id];
       const [show, lod1, lod2] = await Promise.all([
-        file.show ? loader.loadAsync(file.show).then((gltf) => buildLevel(gltf.scene)) : Promise.resolve(null),
-        loader.loadAsync(file.lod1).then((gltf) => buildLevel(gltf.scene)),
-        loader.loadAsync(file.lod2).then((gltf) => buildLevel(gltf.scene)),
+        file.show ? loader.loadAsync(file.show).then((gltf) => buildLevel(gltf.scene, id)) : Promise.resolve(null),
+        loader.loadAsync(file.lod1).then((gltf) => buildLevel(gltf.scene, id)),
+        loader.loadAsync(file.lod2).then((gltf) => buildLevel(gltf.scene, id)),
       ]);
       prepared.set(id, { show: show ?? lod1, lod1, lod2, fit: fitOf(id, show ?? lod1) });
     }
@@ -184,7 +184,76 @@ function fitOf(
   };
 }
 
-function buildLevel(root: THREE.Object3D): Level {
+/** The GLASS primitive also covers hood, roof, fender and sill panels. Those
+ * read as holes because the glass material is alpha-blended. Windows stay
+ * glass; the shell panels are copied onto the opaque body paint. */
+function sealVantaShell(root: THREE.Object3D): void {
+  let body: THREE.Mesh | undefined;
+  let glass: THREE.Mesh | undefined;
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const material = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.Material | undefined;
+    if (material?.name === "BODY" && !body) body = mesh;
+    if (material?.name === "GLASS" && !glass) glass = mesh;
+  });
+  const index = glass?.geometry.getIndex();
+  const position = glass?.geometry.getAttribute("position");
+  if (!body || !glass || !index || !position) return;
+  root.updateMatrixWorld(true);
+  const keep: number[] = [];
+  const move: number[] = [];
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  const normal = new THREE.Vector3();
+  for (let t = 0; t < index.count; t += 3) {
+    const i0 = index.getX(t);
+    const i1 = index.getX(t + 1);
+    const i2 = index.getX(t + 2);
+    a.fromBufferAttribute(position, i0).applyMatrix4(glass.matrixWorld);
+    b.fromBufferAttribute(position, i1).applyMatrix4(glass.matrixWorld);
+    c.fromBufferAttribute(position, i2).applyMatrix4(glass.matrixWorld);
+    center.copy(a).add(b).add(c).multiplyScalar(1 / 3);
+    normal.subVectors(b, a).cross(c.sub(a)).normalize();
+    const window =
+      Math.abs(normal.y) < 0.55 &&
+      center.y > 0.52 &&
+      center.y < 1.2 &&
+      center.z > -0.35 &&
+      center.z < 1.7 &&
+      Math.abs(center.x) < 0.9;
+    (window ? keep : move).push(i0, i1, i2);
+  }
+  if (move.length === 0) return;
+  const shell = new THREE.BufferGeometry();
+  shell.setAttribute("position", position);
+  const normalAttr = glass.geometry.getAttribute("normal");
+  if (normalAttr) shell.setAttribute("normal", normalAttr);
+  const color = new Float32Array(position.count * 3);
+  const red = 0.42;
+  const green = 0.012;
+  const blue = 0.016;
+  for (let i = 0; i < position.count; i++) {
+    color[i * 3] = red;
+    color[i * 3 + 1] = green;
+    color[i * 3 + 2] = blue;
+  }
+  shell.setAttribute("color", new THREE.BufferAttribute(color, 3));
+  shell.setIndex(move);
+  const shellMesh = new THREE.Mesh(shell, body.material);
+  shellMesh.name = "BodyShell";
+  shellMesh.position.copy(glass.position);
+  shellMesh.quaternion.copy(glass.quaternion);
+  shellMesh.scale.copy(glass.scale);
+  glass.parent?.add(shellMesh);
+  glass.geometry.setIndex(keep);
+  glass.visible = keep.length > 0;
+}
+
+function buildLevel(root: THREE.Object3D, id: Exclude<CarId, "surge">): Level {
+  if (id === "vanta") sealVantaShell(root);
   root.updateMatrixWorld(true);
   const wheels = {} as Record<CarCorner, THREE.Group>;
   const uprights = {} as Record<CarCorner, THREE.Group>;
@@ -465,13 +534,43 @@ function importedMaterial(
     }
     return mat;
   }
-  if (vehicleId === "vanta" && /^(BODY|GLASS|LIGHT|NUMBER|CALIPER|WHEEL)$/.test(source.name)) {
+  if (vehicleId === "vanta" && source.name === "GLASS") {
+    const key = "vanta-glass";
+    let mat = cache.get(key);
+    if (!mat) {
+      mat = new THREE.MeshPhysicalMaterial({
+        name: "GLASS",
+        color: 0x10161c,
+        roughness: 0.06,
+        metalness: 0.02,
+        transparent: true,
+        opacity: 0.78,
+        depthWrite: true,
+        transmission: 0,
+        side: THREE.FrontSide,
+        envMapIntensity: 0.85,
+        clearcoat: 1,
+        clearcoatRoughness: 0.05,
+      });
+      cache.set(key, mat);
+    }
+    return mat;
+  }
+  if (vehicleId === "vanta" && /^(BODY|LIGHT|NUMBER|CALIPER|WHEEL)$/.test(source.name)) {
     const key = `vanta:${source.name}:${source.uuid}`;
     let mat = cache.get(key);
     if (!mat) {
-      mat = source.clone();
-      retainTextures(mat);
-      cache.set(key, mat);
+      const opaque = source.clone() as THREE.MeshPhysicalMaterial;
+      retainTextures(opaque);
+      opaque.transparent = false;
+      opaque.opacity = 1;
+      opaque.depthWrite = true;
+      opaque.depthTest = true;
+      opaque.alphaTest = 0;
+      opaque.transmission = 0;
+      opaque.blending = THREE.NormalBlending;
+      cache.set(key, opaque);
+      mat = opaque;
     }
     return mat;
   }
