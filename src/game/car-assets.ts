@@ -59,7 +59,7 @@ export type CarAssetReport = {
   presentation: Record<string, { triangles: number; draws: number }>;
 };
 
-const FILES: Record<Exclude<CarId, "surge">, { show?: string; lod1: string; lod2: string; bytes: number }> = {
+const FILES: Record<CarId, { show?: string; lod1: string; lod2: string; bytes: number }> = {
   vector: {
     show: "/models/lod0/vector-gt3.glb",
     lod1: "/models/lod1/vector-gt3.glb",
@@ -72,7 +72,18 @@ const FILES: Record<Exclude<CarId, "surge">, { show?: string; lod1: string; lod2
     lod2: "/models/lod2/vanta-gt4.glb",
     bytes: 536624 + 271780 + 116272,
   },
-  aegis: { lod1: "/models/lod1/family-sedan.glb", lod2: "/models/lod2/family-sedan.glb", bytes: 1006584 + 122748 },
+  aegis: {
+    show: "/models/lod0/aegis-tcr.glb",
+    lod1: "/models/lod1/aegis-tcr.glb",
+    lod2: "/models/lod2/aegis-tcr.glb",
+    bytes: 606468 + 321388 + 140192,
+  },
+  surge: {
+    show: "/models/lod0/surge-lmp.glb",
+    lod1: "/models/lod1/surge-lmp.glb",
+    lod2: "/models/lod2/surge-lmp.glb",
+    bytes: 386664 + 214156 + 90976,
+  },
 };
 
 const CORNERS: CarCorner[] = ["FL", "FR", "RL", "RR"];
@@ -91,7 +102,7 @@ export function isSharedAsset(resource: THREE.BufferGeometry | THREE.Texture): b
 export function carAssetReport(): CarAssetReport {
   const cars: CarAssetReport["cars"] = {};
   let bytes = 0;
-  for (const id of Object.keys(FILES) as Array<Exclude<CarId, "surge">>) {
+  for (const id of Object.keys(FILES) as CarId[]) {
     bytes += FILES[id].bytes;
     const item = prepared.get(id);
     if (!item) continue;
@@ -142,7 +153,7 @@ async function loadAll(renderer: THREE.WebGLRenderer): Promise<void> {
   loader.setMeshoptDecoder(MeshoptDecoder);
   const started = performance.now();
   try {
-    for (const id of Object.keys(FILES) as Array<Exclude<CarId, "surge">>) {
+    for (const id of Object.keys(FILES) as CarId[]) {
       const file = FILES[id];
       const [show, lod1, lod2] = await Promise.all([
         file.show ? loader.loadAsync(file.show).then((gltf) => buildLevel(gltf.scene, id)) : Promise.resolve(null),
@@ -158,7 +169,7 @@ async function loadAll(renderer: THREE.WebGLRenderer): Promise<void> {
 }
 
 function fitOf(
-  id: Exclude<CarId, "surge">,
+  id: CarId,
   level: Level,
 ): { scale: THREE.Vector3; offset: THREE.Vector3; frontAxleY: number; frontZ: number } {
   const layout = wheelLayout(id);
@@ -169,12 +180,12 @@ function fitOf(
   const modelWb = frontPos.z - rearPos.z;
   const modelTrack = (Math.abs(frontPos.x) + Math.abs(rearPos.x)) / 2;
   const physTrack = (layout.frontX + layout.rearX) / 2;
-  const scaleZ = modelWb > 0.01 ? layout.wheelbase / modelWb : 1;
-  const scaleX = modelTrack > 0.01 ? physTrack / modelTrack : scaleZ;
+  // Surge is already at the game wheelbase and is wider, with bigger tyres.
+  // Keep that size and slide it back so +/-1.41 lands on the game axles.
+  const scaleZ = id === "surge" ? 1 : modelWb > 0.01 ? layout.wheelbase / modelWb : 1;
+  const scaleX = id === "surge" ? 1 : modelTrack > 0.01 ? physTrack / modelTrack : scaleZ;
   const scaleY = scaleZ;
-  // Visual body drop only. The arch crown is already close to the tyre, so this
-  // is the extra ride-height the fender can take before the tyre meets the lip.
-  const drop = id === "aegis" ? 0.078 : 0;
+  const drop = 0;
   const offsetZ = layout.frontZ - frontPos.z * scaleZ;
   return {
     scale: new THREE.Vector3(scaleX, scaleY, scaleZ),
@@ -286,7 +297,7 @@ function paintVantaCarbon(body: THREE.Mesh): void {
   color.needsUpdate = true;
 }
 
-function buildLevel(root: THREE.Object3D, id: Exclude<CarId, "surge">): Level {
+function buildLevel(root: THREE.Object3D, id: CarId): Level {
   if (id === "vanta") sealVantaShell(root);
   root.updateMatrixWorld(true);
   const wheels = {} as Record<CarCorner, THREE.Group>;
@@ -441,22 +452,11 @@ export function instantiateRealCar(vehicleId: string, look: CarLook): RealCarIns
     const holder = new THREE.Group();
     holder.scale.copy(item.fit.scale);
     const mount = new THREE.Group();
-    if (vehicleId === "aegis") {
-      // Pitch about the front axle so the rear arch drops onto the tyre and the
-      // front arch stays where the uniform drop already put it.
-      const pitch = -0.034;
-      const axleY = item.fit.offset.y + item.fit.frontAxleY * item.fit.scale.y;
-      mount.rotation.x = pitch;
-      mount.position.set(0, axleY, item.fit.frontZ);
-      holder.position.set(0, item.fit.offset.y - axleY, item.fit.offset.z - item.fit.frontZ);
-    } else {
-      holder.position.copy(item.fit.offset);
-    }
+    holder.position.copy(item.fit.offset);
     const clone = level.body.clone(true);
     assignMaterials(clone, materials, look, paint, brake, vehicleId);
     holder.add(clone);
     mount.add(holder);
-    if (vehicleId === "aegis") mountRaceKit(holder, vehicleId, level.modelBox, look.accent);
     lod.addLevel(mount, distance, 0.15);
   }
   const wheels = {} as RealCarInstance["wheels"];
@@ -469,12 +469,19 @@ export function instantiateRealCar(vehicleId: string, look: CarLook): RealCarIns
     const correct = sourceR > 0.01 ? refR / sourceR : 1;
     const spin = new THREE.Group();
     spin.position.y = visualR - physR;
+    if (vehicleId === "surge") {
+      const axle = wheelLevel.wheels[corner].userData.axle as THREE.Vector3;
+      const physX = corner.startsWith("F") ? layout.frontX : layout.rearX;
+      const sign = axle.x >= 0 ? 1 : -1;
+      spin.position.x = axle.x - sign * physX;
+    }
     spin.scale.set(item.fit.scale.x * correct, item.fit.scale.y * correct, item.fit.scale.y * correct);
     const wheel = wheelLevel.wheels[corner].clone(true);
     assignMaterials(wheel, materials, look, paint, brake, vehicleId);
     spin.add(wheel);
     const upright = new THREE.Group();
     upright.position.y = visualR - physR;
+    upright.position.x = spin.position.x;
     upright.scale.copy(spin.scale);
     const cal = wheelLevel.uprights[corner].clone(true);
     assignMaterials(cal, materials, look, paint, brake, vehicleId);
@@ -565,6 +572,27 @@ function importedMaterial(
       body.customProgramCacheKey = () => "vector-neon-cyan-v6";
       cache.set(key, body);
       mat = body;
+    }
+    return mat;
+  }
+  if (vehicleId === "aegis" || vehicleId === "surge") {
+    const key = `${vehicleId}:${source.name}:${source.uuid}`;
+    let mat = cache.get(key);
+    if (!mat) {
+      const kept = source.clone() as THREE.MeshPhysicalMaterial;
+      retainTextures(kept);
+      kept.transmission = 0;
+      if (source.name === "GLASS") {
+        kept.transparent = true;
+        kept.depthWrite = false;
+      } else {
+        kept.transparent = false;
+        kept.opacity = 1;
+        kept.depthWrite = true;
+        kept.alphaTest = 0;
+      }
+      cache.set(key, kept);
+      mat = kept;
     }
     return mat;
   }
