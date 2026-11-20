@@ -236,7 +236,16 @@ export function createShowroom(renderer: THREE.WebGLRenderer): Showroom {
     const u = venue * venue * (3 - 2 * venue);
     const zoom = showcase.zoom;
     const az = VIEW_AZ[showcase.view] + (frame.reduced || showcase.dragging ? 0 : Math.sin(clock.t * 0.35) * 0.05);
-    const garageDist = (lineup && carsOpen ? 13.4 : carsOpen ? 9.8 : 10.2) * zoom;
+    // Side walls are at x = ±9.2 and the back wall at z = -8.2. A 9.8 m orbit
+    // put the Side and Rear cameras outside the shell, so those views were black.
+    const viewDist = showcase.view === "side" ? 7.15 : showcase.view === "rear" ? 7.0 : 9.6;
+    let garageDist = (lineup && carsOpen ? 11.2 : carsOpen ? viewDist : 10.2) * zoom;
+    if (carsOpen) {
+      const sin = Math.sin(az);
+      const cos = Math.cos(az);
+      if (Math.abs(sin) > 0.2) garageDist = Math.min(garageDist, 8.35 / Math.abs(sin));
+      if (cos < -0.2) garageDist = Math.min(garageDist, -7.45 / cos);
+    }
     const garageX = Math.sin(az) * garageDist;
     const garageZ = Math.cos(az) * garageDist;
     const garageY = (carsOpen ? 1.72 : 1.78) + showcase.pitch;

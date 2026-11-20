@@ -35,7 +35,7 @@ function snapshot() {
 }
 
 function classToken(name: string): string | null {
-  return /\b(GT3|GT4|LMP|TCR)\b/.exec(name)?.[1] ?? null;
+  return /\b(GT3|GT4|LMP|TCR|PROTO|CONCEPT)\b/.exec(name)?.[1] ?? null;
 }
 
 const VIEWS: ShowcaseView[] = ["front", "side", "rear"];

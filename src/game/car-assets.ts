@@ -64,7 +64,7 @@ const FILES: Record<CarId, { show?: string; lod1: string; lod2: string; bytes: n
     show: "/models/lod0/vector-gt3.glb",
     lod1: "/models/lod1/vector-gt3.glb",
     lod2: "/models/lod2/vector-gt3.glb",
-    bytes: 9659320 + 3109912 + 1016700,
+    bytes: 3451976 + 1377732 + 502216,
   },
   vanta: {
     show: "/models/lod0/vanta-gt4.glb",
@@ -180,11 +180,13 @@ function fitOf(
   const modelWb = frontPos.z - rearPos.z;
   const modelTrack = (Math.abs(frontPos.x) + Math.abs(rearPos.x)) / 2;
   const physTrack = (layout.frontX + layout.rearX) / 2;
-  // Surge is already at the game wheelbase and is wider, with bigger tyres.
-  // Keep that size and slide it back so +/-1.41 lands on the game axles.
-  const scaleZ = id === "surge" ? 1 : modelWb > 0.01 ? layout.wheelbase / modelWb : 1;
-  const scaleX = id === "surge" ? 1 : modelTrack > 0.01 ? physTrack / modelTrack : scaleZ;
-  const scaleY = scaleZ;
+  const scaleZ = modelWb > 0.01 ? layout.wheelbase / modelWb : 1;
+  const scaleX = modelTrack > 0.01 ? physTrack / modelTrack : scaleZ;
+  // Surge's wheelbase already matches, so scaleZ stays 1 and the axles land on
+  // +1.32 / -1.50. Its tyres are larger than the 0.34 m physics radius, so the
+  // body height follows the front tyre and the wheels are scaled on their own.
+  const frontR = level.radius.FL || layout.frontRadius;
+  const scaleY = id === "surge" && frontR > 0.05 ? layout.frontRadius / frontR : scaleZ;
   const drop = 0;
   const offsetZ = layout.frontZ - frontPos.z * scaleZ;
   return {
@@ -272,10 +274,11 @@ function sealVantaShell(root: THREE.Object3D): void {
 
 function isVantaWindow(center: THREE.Vector3, normal: THREE.Vector3): boolean {
   const inCabin = center.z < 1.35 && center.z > -1.2 && Math.abs(center.x) < 0.9;
-  const canopy = inCabin && center.y > 0.78;
-  const windscreen = inCabin && center.y > 0.5 && center.z > 0.05 && normal.z > 0.18 && normal.y < 0.93;
-  const sideGlass = inCabin && center.y > 0.6 && center.y < 1.2 && Math.abs(normal.x) > 0.55;
-  return canopy || windscreen || sideGlass;
+  // The roof shell was being kept as glass, so the red body showed through it.
+  if (normal.y > 0.55) return false;
+  const windscreen = inCabin && center.y > 0.48 && center.z > 0.05 && normal.z > 0.22 && normal.y < 0.72;
+  const sideGlass = inCabin && center.y > 0.55 && center.y < 1.15 && Math.abs(normal.x) > 0.55;
+  return windscreen || sideGlass;
 }
 
 function paintVantaCarbon(body: THREE.Mesh): void {
@@ -297,8 +300,212 @@ function paintVantaCarbon(body: THREE.Mesh): void {
   color.needsUpdate = true;
 }
 
+/** Rich gold that stays gold under the cool garage and the night race lights. */
+function tuneSurgeGold(kept: THREE.MeshPhysicalMaterial): void {
+  kept.color.set("#d8921a");
+  kept.metalness = 0.55;
+  kept.roughness = 0.38;
+  kept.clearcoat = 0.18;
+  kept.clearcoatRoughness = 0.32;
+  kept.envMapIntensity = 0.38;
+  kept.specularColor = new THREE.Color("#ffd089");
+  kept.specularIntensity = 0.4;
+  kept.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vSurgePos;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvSurgePos = position;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vSurgePos;")
+      .replace(
+        "#include <opaque_fragment>",
+        `{
+           if (!gl_FrontFacing) {
+             float cabin = step(abs(vSurgePos.x), 0.95) * step(0.22, vSurgePos.y) * step(vSurgePos.y, 1.22)
+               * step(-1.15, vSurgePos.z) * step(vSurgePos.z, 1.25);
+             outgoingLight = mix(outgoingLight, vec3(0.012, 0.011, 0.01), cabin);
+           }
+         }
+         #include <opaque_fragment>`,
+      );
+  };
+  kept.customProgramCacheKey = () => "surge-gold-v1";
+}
+
+/** The nose 88 is mapped across the intake, and the door 88 stretches on the curve. */
+function blankAegisBakedPlates(kept: THREE.MeshPhysicalMaterial): void {
+  const paint = new THREE.Color("#0c38c4");
+  kept.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vAegisPos;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvAegisPos = position;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vAegisPos;")
+      .replace(
+        "#include <map_fragment>",
+        `#include <map_fragment>
+         {
+           vec3 p = vAegisPos;
+           float nose = step(1.55, p.z) * step(p.z, 2.2) * step(0.08, p.y) * step(p.y, 0.6) * step(abs(p.x), 0.62);
+           float side = step(0.25, p.y) * step(p.y, 0.85) * step(-0.35, p.z) * step(p.z, 0.95) * step(0.4, abs(p.x));
+           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(${paint.r.toFixed(4)}, ${paint.g.toFixed(4)}, ${paint.b.toFixed(4)}), max(nose, side));
+         }`,
+      );
+  };
+  kept.customProgramCacheKey = () => "aegis-plates-v6";
+}
+
+const plateTextures = new Map<string, THREE.CanvasTexture>();
+
+function racePlateTexture(label: string, border: string): THREE.CanvasTexture {
+  const cached = plateTextures.get(label + border);
+  if (cached) return cached;
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 256;
+  const g = canvas.getContext("2d");
+  if (g) {
+    g.fillStyle = "#101114";
+    g.fillRect(0, 0, 512, 256);
+    g.lineWidth = 14;
+    g.strokeStyle = border;
+    g.strokeRect(18, 18, 476, 220);
+    g.strokeStyle = "#f7f7f7";
+    g.lineWidth = 28;
+    g.lineCap = "butt";
+    g.lineJoin = "miter";
+    const draw0 = (x: number) => {
+      g.beginPath();
+      g.ellipse(x, 128, 42, 72, 0, 0, Math.PI * 2);
+      g.stroke();
+    };
+    const draw4 = (x: number) => {
+      g.beginPath();
+      g.moveTo(x - 8, 52);
+      g.lineTo(x - 46, 138);
+      g.lineTo(x + 48, 138);
+      g.moveTo(x + 24, 52);
+      g.lineTo(x + 24, 208);
+      g.stroke();
+    };
+    const draw5 = (x: number) => {
+      g.beginPath();
+      g.moveTo(x + 40, 52);
+      g.lineTo(x - 36, 52);
+      g.lineTo(x - 36, 120);
+      g.lineTo(x + 28, 120);
+      g.lineTo(x + 36, 168);
+      g.lineTo(x + 20, 204);
+      g.lineTo(x - 40, 204);
+      g.stroke();
+    };
+    const draw8 = (x: number) => {
+      g.beginPath();
+      g.ellipse(x, 92, 40, 36, 0, 0, Math.PI * 2);
+      g.stroke();
+      g.beginPath();
+      g.ellipse(x, 168, 44, 40, 0, 0, Math.PI * 2);
+      g.stroke();
+    };
+    const glyphs: Record<string, (x: number) => void> = { "0": draw0, "4": draw4, "5": draw5, "8": draw8 };
+    const gap = label.length > 1 ? 78 : 0;
+    const origin = 256 - ((label.length - 1) * gap) / 2;
+    for (let i = 0; i < label.length; i++) glyphs[label[i] ?? ""]?.(origin + i * gap);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  sharedTextures.add(tex);
+  plateTextures.set(label + border, tex);
+  return tex;
+}
+
+function dressVantaRearPlate(root: THREE.Object3D): void {
+  if (typeof document === "undefined") return;
+  let numberMesh: THREE.Mesh | undefined;
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh || numberMesh) return;
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    if (materials.some((mat) => mat?.name === "NUMBER")) numberMesh = mesh;
+  });
+  if (!numberMesh) return;
+  const mesh: THREE.Mesh = numberMesh;
+  const position = mesh.geometry.getAttribute("position");
+  const index = mesh.geometry.getIndex();
+  if (!position || !index) return;
+  const point = new THREE.Vector3();
+  const box = new THREE.Box3();
+  const keep: number[] = [];
+  for (let t = 0; t < index.count; t += 3) {
+    const ids = [index.getX(t), index.getX(t + 1), index.getX(t + 2)];
+    let rear = false;
+    for (const id of ids) {
+      point.fromBufferAttribute(position, id);
+      // Rear plate, and the faint hood number (local z > 0.4).
+      if (point.z < -0.8 || point.z > 0.4) rear = true;
+    }
+    if (!rear) {
+      keep.push(ids[0]!, ids[1]!, ids[2]!);
+      continue;
+    }
+    for (const id of ids) box.expandByPoint(point.fromBufferAttribute(position, id));
+  }
+  mesh.geometry.setIndex(keep);
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const plate = new THREE.Mesh(
+    new THREE.PlaneGeometry(Math.max(0.12, size.x * 1.15), Math.max(0.08, size.y * 1.2)),
+    new THREE.MeshBasicMaterial({
+      map: racePlateTexture("04", "#f2f2f2"),
+      side: THREE.DoubleSide,
+    }),
+  );
+  plate.name = "rear-number";
+  plate.frustumCulled = false;
+  plate.position.set(center.x, center.y, box.min.z - 0.012);
+  plate.rotation.y = Math.PI;
+  mesh.add(plate);
+}
+
+function dressAegisNumbers(root: THREE.Object3D): void {
+  if (typeof document === "undefined") return;
+  let body: THREE.Mesh | undefined;
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh || body) return;
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    if (materials.some((mat) => mat?.name === "BODY")) body = mesh;
+  });
+  if (!body) return;
+  const mesh: THREE.Mesh = body;
+  const material = new THREE.MeshBasicMaterial({
+    map: racePlateTexture("88", "#3ec6ff"),
+    side: THREE.FrontSide,
+  });
+  // Sit just outside the door skin so the plate stays flat and fully visible.
+  const addDoor = (x: number) => {
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.18), material);
+    plate.name = "door-number";
+    plate.position.set(x, 0.56, 0.62);
+    plate.rotation.y = x > 0 ? Math.PI / 2 : -Math.PI / 2;
+    mesh.parent?.add(plate);
+  };
+  addDoor(0.99);
+  addDoor(-0.99);
+  const hood = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.2), material);
+  hood.name = "nose-number";
+  hood.position.set(0, 0.66, 1.5);
+  hood.rotation.x = -1.02;
+  mesh.parent?.add(hood);
+}
+
 function buildLevel(root: THREE.Object3D, id: CarId): Level {
-  if (id === "vanta") sealVantaShell(root);
+  if (id === "vanta") {
+    sealVantaShell(root);
+    dressVantaRearPlate(root);
+  }
+  if (id === "aegis") dressAegisNumbers(root);
   root.updateMatrixWorld(true);
   const wheels = {} as Record<CarCorner, THREE.Group>;
   const uprights = {} as Record<CarCorner, THREE.Group>;
@@ -468,20 +675,19 @@ export function instantiateRealCar(vehicleId: string, look: CarLook): RealCarIns
     const visualR = refR * item.fit.scale.y;
     const correct = sourceR > 0.01 ? refR / sourceR : 1;
     const spin = new THREE.Group();
-    spin.position.y = visualR - physR;
     if (vehicleId === "surge") {
-      const axle = wheelLevel.wheels[corner].userData.axle as THREE.Vector3;
-      const physX = corner.startsWith("F") ? layout.frontX : layout.rearX;
-      const sign = axle.x >= 0 ? 1 : -1;
-      spin.position.x = axle.x - sign * physX;
+      // Sit the visual tyre on the physics axle at the physics radius.
+      const wheelScale = sourceR > 0.05 ? physR / sourceR : 1;
+      spin.scale.set(wheelScale, wheelScale, wheelScale);
+    } else {
+      spin.position.y = visualR - physR;
+      spin.scale.set(item.fit.scale.x * correct, item.fit.scale.y * correct, item.fit.scale.y * correct);
     }
-    spin.scale.set(item.fit.scale.x * correct, item.fit.scale.y * correct, item.fit.scale.y * correct);
     const wheel = wheelLevel.wheels[corner].clone(true);
     assignMaterials(wheel, materials, look, paint, brake, vehicleId);
     spin.add(wheel);
     const upright = new THREE.Group();
-    upright.position.y = visualR - physR;
-    upright.position.x = spin.position.x;
+    upright.position.copy(spin.position);
     upright.scale.copy(spin.scale);
     const cal = wheelLevel.uprights[corner].clone(true);
     assignMaterials(cal, materials, look, paint, brake, vehicleId);
@@ -591,6 +797,8 @@ function importedMaterial(
         kept.depthWrite = true;
         kept.alphaTest = 0;
       }
+      if (vehicleId === "surge" && source.name === "PAINT") tuneSurgeGold(kept);
+      if (vehicleId === "aegis" && source.name === "BODY") blankAegisBakedPlates(kept);
       cache.set(key, kept);
       mat = kept;
     }
