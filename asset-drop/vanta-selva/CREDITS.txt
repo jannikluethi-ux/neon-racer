@@ -1,0 +1,33 @@
+Vanta GT4 car model - credits
+=============================
+
+This work is based on "Selva Hypercar concept by Max Hordin 2019" (https://sketchfab.com/3d-models/selva-hypercar-concept-by-max-hordin-2019-e426a6e57b364b3fa6c29775c72cac05) by Max Hordin (https://sketchfab.com/maxhordin) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Modifications (made for Neon Racer, Nov 2026):
+- Branding removed: rear M-shield monogram, front splitter emblem, license
+  plate (including a material named after a production car), wheel-cap M logos
+  and caliper "HORDIN" lettering.
+- Livery repainted as a deep glossy red with dark carbon/black accents. Large
+  race number #04 added on both doors, the rear and the hood (white numerals
+  on black plates that fill the panel).
+- A GT4-style carbon/black rear wing was added (thicker aerofoil spanning
+  about the body width, sturdy uprights planted on the rear deck, endplates
+  and a Gurney flap). The source model had none.
+- The thin windscreen strut from hood to roof, and a stray 4 mm interior rod,
+  were removed.
+- Rear wheels, which were a single left+right mesh in the source, were split.
+  Wheels and calipers were separated into named nodes for the game's wheel rig.
+- Source rims (and their chipped spoke roots) were replaced with procedural
+  21-inch 7-spoke rims and thinner-sidewall tyres; overall wheel diameter and
+  wheel centres are unchanged.
+- Dense grille meshes were voxel-remeshed. Geometry was reduced to three
+  levels of detail (about 59k / 28k / 9k triangles). Solid-colour materials
+  were merged with vertex colours and small palette textures down to 12 draw
+  calls per LOD. Body shading uses weighted normals / auto-smooth (no extra
+  triangles). Meshopt + quantization variants are included. The source had
+  no textures beyond the tiny palettes added here.
+- Re-centred and scaled: metres, ground at y=0, midpoint between the axles at
+  the origin, length about 4.55 m.
+
+The modified model is shared under the same CC-BY-4.0 terms. Keep the credit
+line above in the game's credits / about screen and in the repository.
