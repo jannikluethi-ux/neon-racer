@@ -14,7 +14,7 @@ const GAP = 6.6;
 const BOUNDS: Record<string, { z0: number; z1: number; halfW: number; h: number }> = {
   vector: { z0: -2.4, z1: 2.2, halfW: 1.28, h: 1.28 },
   vanta: { z0: -2.4, z1: 2.15, halfW: 1.32, h: 1.45 },
-  surge: { z0: -2.45, z1: 2.6, halfW: 1.3, h: 1.4 },
+  surge: { z0: -2.5, z1: 2.5, halfW: 1.15, h: 1.15 },
   aegis: { z0: -2.15, z1: 2.35, halfW: 1.15, h: 1.25 },
 };
 

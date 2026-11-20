@@ -3,8 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+  # Run on a pull request into any branch, not only main, so the milestone
+  # stack (cursor/**) gets the same checks as a PR targeting main.
   pull_request:
-    branches: [main]
 
 jobs:
   check:

@@ -8,6 +8,14 @@ export default defineConfig({
   base: "./",
   resolve: { tsconfigPaths: true },
   plugins: [
+    {
+      name: "drop-bundled-basis",
+      generateBundle(_options, bundle) {
+        for (const name of Object.keys(bundle)) {
+          if (name.includes("basis_transcoder")) delete bundle[name];
+        }
+      },
+    },
     tailwindcss(),
     tanstackStart({
       spa: {

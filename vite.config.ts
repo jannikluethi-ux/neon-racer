@@ -22,6 +22,16 @@ export default defineConfig(({ command, isPreview }) => ({
   },
   resolve: { tsconfigPaths: true },
   plugins: [
+    // KTX2Loader references the Basis transcoder with import.meta.url, so Vite
+    // emits a second copy next to public/basis. The loader is pointed at /basis/.
+    {
+      name: "drop-bundled-basis",
+      generateBundle(_options, bundle) {
+        for (const name of Object.keys(bundle)) {
+          if (name.includes("basis_transcoder")) delete bundle[name];
+        }
+      },
+    },
     // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
     grokPwaPlugin(),
     tailwindcss(),
