@@ -14,11 +14,11 @@ const GAP = 6.6;
 const BOUNDS: Record<string, { z0: number; z1: number; halfW: number; h: number }> = {
   vector: { z0: -2.4, z1: 2.2, halfW: 1.28, h: 1.28 },
   vanta: { z0: -2.4, z1: 2.15, halfW: 1.32, h: 1.45 },
-  surge: { z0: -2.62, z1: 2.55, halfW: 1.2, h: 1.02 },
-  aegis: { z0: -2.5, z1: 2.3, halfW: 1.4, h: 1.7 },
+  surge: { z0: -2.45, z1: 2.6, halfW: 1.3, h: 1.4 },
+  aegis: { z0: -2.15, z1: 2.35, halfW: 1.15, h: 1.25 },
 };
 
-type ShotKind = "side" | "front34" | "rear34" | "front" | "side1" | "rear" | "wing" | "lock";
+type ShotKind = "side" | "front34" | "rear34" | "front" | "side1" | "rear" | "wing" | "lock" | "glass";
 
 function parseShot(shot: string): { kind: ShotKind; car: string | null } {
   if (shot === "side" || shot === "front" || shot === "rear" || shot === "front34" || shot === "rear34") {
@@ -29,6 +29,7 @@ function parseShot(shot: string): { kind: ShotKind; car: string | null } {
   if (view === "front34" || view === "rear34") return { kind: view, car };
   if (view === "wing") return { kind: "wing", car };
   if (view === "lock") return { kind: "lock", car };
+  if (view === "glass") return { kind: "glass", car };
   if (view === "front" || view === "side" || view === "rear") {
     return { kind: view === "side" ? "side1" : view, car };
   }
@@ -159,8 +160,9 @@ export function createCompareScene(renderer: THREE.WebGLRenderer): CompareHandle
     else if (parsed.kind === "rear") eye.set(0, 0.85, -12);
     else if (parsed.kind === "front34") eye.set(12, 2.6, 13);
     else if (parsed.kind === "lock") eye.set(6.5, 1.05, 11);
+    else if (parsed.kind === "glass") eye.set(3.2, 1.35, 4.2);
     else eye.set(12, 2.6, -13);
-    target.set(0, parsed.kind === "wing" ? 0.85 : 0.58, parsed.kind === "wing" ? -1.4 : 0);
+    target.set(0, parsed.kind === "glass" ? 0.85 : parsed.kind === "wing" ? 0.85 : 0.58, parsed.kind === "glass" ? 0.55 : parsed.kind === "wing" ? -1.4 : 0);
     const visible = views.filter((entry) => entry.view.root.visible);
     const points =
       parsed.kind === "wing"
@@ -177,7 +179,21 @@ export function createCompareScene(renderer: THREE.WebGLRenderer): CompareHandle
             }
             return pts;
           })
-        : visible.flatMap(cornersOf);
+        : parsed.kind === "glass"
+          ? visible.flatMap((entry) => {
+              const box = BOUNDS[entry.id]!;
+              entry.view.root.updateWorldMatrix(true, true);
+              const pts: THREE.Vector3[] = [];
+              for (const x of [-0.55, 0.55]) {
+                for (const y of [0.55, Math.min(box.h, 1.25)]) {
+                  for (const z of [0.15, 1.15]) {
+                    pts.push(scratch.set(x, y, z).applyMatrix4(entry.view.root.matrixWorld).clone());
+                  }
+                }
+              }
+              return pts;
+            })
+          : visible.flatMap(cornersOf);
     const steer = Number(new URLSearchParams(window.location.search).get("steer") || "0");
     if (steer) {
       for (const entry of views) for (const pivot of entry.view.frontPivots) pivot.rotation.y = steer;

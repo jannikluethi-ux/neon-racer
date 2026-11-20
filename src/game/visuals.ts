@@ -513,7 +513,7 @@ export function createCarView(color: number, vehicleId: string, rival = false, p
   // Race number plates: rear panel plus one per door. Vanta's plates are painted
   // into the body, so a second set would sit on top of #04.
   const vector = vehicleId === "vector" && real;
-  if (!(vehicleId === "vanta" && real)) {
+  if (!(real && (vehicleId === "vanta" || vehicleId === "aegis" || vehicleId === "surge"))) {
   const numberMap = vector ? filledNumberTexture(raceNumberFor(role, vehicleId)) : numberTexture(role, vehicleId, look.accent);
   const numberMat = new THREE.MeshBasicMaterial({
     map: numberMap,
