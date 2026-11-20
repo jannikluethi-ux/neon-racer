@@ -184,9 +184,12 @@ function fitOf(
   };
 }
 
-/** The GLASS primitive also covers hood, roof, fender and sill panels. Those
- * read as holes because the glass material is alpha-blended. Windows stay
- * glass; the shell panels are copied onto the opaque body paint. */
+/**
+ * The GLASS primitive includes the windscreen and roof canopy, and also a
+ * skin over the hood, sills, splitter and rear arch. Only the greenhouse
+ * stays glass. The rest is copied onto an opaque shell: red above the belt,
+ * dark carbon below it. Grey rear faces on the body are carbon too.
+ */
 function sealVantaShell(root: THREE.Object3D): void {
   let body: THREE.Mesh | undefined;
   let glass: THREE.Mesh | undefined;
@@ -197,51 +200,55 @@ function sealVantaShell(root: THREE.Object3D): void {
     if (material?.name === "BODY" && !body) body = mesh;
     if (material?.name === "GLASS" && !glass) glass = mesh;
   });
+  if (body) paintVantaCarbon(body);
   const index = glass?.geometry.getIndex();
   const position = glass?.geometry.getAttribute("position");
-  if (!body || !glass || !index || !position) return;
+  const normalAttr = glass?.geometry.getAttribute("normal");
+  if (!body || !glass || !index || !position || !normalAttr) return;
   root.updateMatrixWorld(true);
   const keep: number[] = [];
-  const move: number[] = [];
+  const shellPos: number[] = [];
+  const shellNor: number[] = [];
+  const shellCol: number[] = [];
   const a = new THREE.Vector3();
   const b = new THREE.Vector3();
   const c = new THREE.Vector3();
+  const edge = new THREE.Vector3();
   const center = new THREE.Vector3();
   const normal = new THREE.Vector3();
+  const local = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  const localN = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
   for (let t = 0; t < index.count; t += 3) {
-    const i0 = index.getX(t);
-    const i1 = index.getX(t + 1);
-    const i2 = index.getX(t + 2);
-    a.fromBufferAttribute(position, i0).applyMatrix4(glass.matrixWorld);
-    b.fromBufferAttribute(position, i1).applyMatrix4(glass.matrixWorld);
-    c.fromBufferAttribute(position, i2).applyMatrix4(glass.matrixWorld);
+    const ids = [index.getX(t), index.getX(t + 1), index.getX(t + 2)];
+    for (let k = 0; k < 3; k++) {
+      local[k]!.fromBufferAttribute(position, ids[k]!);
+      localN[k]!.fromBufferAttribute(normalAttr, ids[k]!);
+    }
+    a.copy(local[0]!).applyMatrix4(glass.matrixWorld);
+    b.copy(local[1]!).applyMatrix4(glass.matrixWorld);
+    c.copy(local[2]!).applyMatrix4(glass.matrixWorld);
     center.copy(a).add(b).add(c).multiplyScalar(1 / 3);
-    normal.subVectors(b, a).cross(c.sub(a)).normalize();
-    const window =
-      Math.abs(normal.y) < 0.55 &&
-      center.y > 0.52 &&
-      center.y < 1.2 &&
-      center.z > -0.35 &&
-      center.z < 1.7 &&
-      Math.abs(center.x) < 0.9;
-    (window ? keep : move).push(i0, i1, i2);
+    edge.subVectors(c, a);
+    normal.subVectors(b, a).cross(edge).normalize();
+    if (isVantaWindow(center, normal)) {
+      keep.push(ids[0]!, ids[1]!, ids[2]!);
+      continue;
+    }
+    const carbon = center.y < 0.48 || center.z < -1.15;
+    const cr = carbon ? 0.02 : 0.42;
+    const cg = carbon ? 0.02 : 0.012;
+    const cb = carbon ? 0.02 : 0.016;
+    for (let k = 0; k < 3; k++) {
+      shellPos.push(local[k]!.x, local[k]!.y, local[k]!.z);
+      shellNor.push(localN[k]!.x, localN[k]!.y, localN[k]!.z);
+      shellCol.push(cr, cg, cb);
+    }
   }
-  if (move.length === 0) return;
+  if (shellPos.length === 0) return;
   const shell = new THREE.BufferGeometry();
-  shell.setAttribute("position", position);
-  const normalAttr = glass.geometry.getAttribute("normal");
-  if (normalAttr) shell.setAttribute("normal", normalAttr);
-  const color = new Float32Array(position.count * 3);
-  const red = 0.42;
-  const green = 0.012;
-  const blue = 0.016;
-  for (let i = 0; i < position.count; i++) {
-    color[i * 3] = red;
-    color[i * 3 + 1] = green;
-    color[i * 3 + 2] = blue;
-  }
-  shell.setAttribute("color", new THREE.BufferAttribute(color, 3));
-  shell.setIndex(move);
+  shell.setAttribute("position", new THREE.Float32BufferAttribute(shellPos, 3));
+  shell.setAttribute("normal", new THREE.Float32BufferAttribute(shellNor, 3));
+  shell.setAttribute("color", new THREE.Float32BufferAttribute(shellCol, 3));
   const shellMesh = new THREE.Mesh(shell, body.material);
   shellMesh.name = "BodyShell";
   shellMesh.position.copy(glass.position);
@@ -250,6 +257,33 @@ function sealVantaShell(root: THREE.Object3D): void {
   glass.parent?.add(shellMesh);
   glass.geometry.setIndex(keep);
   glass.visible = keep.length > 0;
+}
+
+function isVantaWindow(center: THREE.Vector3, normal: THREE.Vector3): boolean {
+  const inCabin = center.z < 1.35 && center.z > -1.2 && Math.abs(center.x) < 0.9;
+  const canopy = inCabin && center.y > 0.78;
+  const windscreen = inCabin && center.y > 0.5 && center.z > 0.05 && normal.z > 0.18 && normal.y < 0.93;
+  const sideGlass = inCabin && center.y > 0.6 && center.y < 1.2 && Math.abs(normal.x) > 0.55;
+  return canopy || windscreen || sideGlass;
+}
+
+function paintVantaCarbon(body: THREE.Mesh): void {
+  const color = body.geometry.getAttribute("color");
+  const position = body.geometry.getAttribute("position");
+  if (!color || !position || color.itemSize < 3) return;
+  body.updateWorldMatrix(true, false);
+  const point = new THREE.Vector3();
+  for (let i = 0; i < color.count; i++) {
+    const r = color.getX(i);
+    const g = color.getY(i);
+    const b = color.getZ(i);
+    const grey = r > 0.4 && g > 0.4 && b > 0.4;
+    if (!grey) continue;
+    point.fromBufferAttribute(position, i).applyMatrix4(body.matrixWorld);
+    if (point.z > -0.6) continue;
+    color.setXYZ(i, 0.02, 0.02, 0.02);
+  }
+  color.needsUpdate = true;
 }
 
 function buildLevel(root: THREE.Object3D, id: Exclude<CarId, "surge">): Level {
@@ -540,14 +574,14 @@ function importedMaterial(
     if (!mat) {
       mat = new THREE.MeshPhysicalMaterial({
         name: "GLASS",
-        color: 0x10161c,
-        roughness: 0.06,
+        color: 0x0c1218,
+        roughness: 0.05,
         metalness: 0.02,
         transparent: true,
-        opacity: 0.78,
-        depthWrite: true,
+        opacity: 0.62,
+        depthWrite: false,
         transmission: 0,
-        side: THREE.FrontSide,
+        side: THREE.DoubleSide,
         envMapIntensity: 0.85,
         clearcoat: 1,
         clearcoatRoughness: 0.05,
