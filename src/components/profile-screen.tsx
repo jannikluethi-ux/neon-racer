@@ -117,7 +117,10 @@ export function ProfileScreen() {
       <p className="result-meta">
         Vector is based on &quot;Race Car 01&quot; (https://sketchfab.com/3d-models/race-car-01-7243b4952d4341ff96d2c5a9ff431238)
         by toddeppe (https://sketchfab.com/toddeppe), licensed under CC-BY-4.0
-        (https://creativecommons.org/licenses/by/4.0/). Vanta and Aegis use CC0 models by tevy.
+        (https://creativecommons.org/licenses/by/4.0/). This work is based on &quot;Selva Hypercar concept by Max Hordin 2019&quot;
+        (https://sketchfab.com/3d-models/selva-hypercar-concept-by-max-hordin-2019-e426a6e57b364b3fa6c29775c72cac05)
+        by Max Hordin (https://sketchfab.com/maxhordin) licensed under CC-BY-4.0
+        (http://creativecommons.org/licenses/by/4.0/). Aegis uses a CC0 model by tevy.
       </p>
       <div className="stack">
         <button type="button" className="btn" onClick={() => open("title", "browse")}>

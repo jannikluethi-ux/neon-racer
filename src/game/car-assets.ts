@@ -66,7 +66,12 @@ const FILES: Record<Exclude<CarId, "surge">, { show?: string; lod1: string; lod2
     lod2: "/models/lod2/vector-gt3.glb",
     bytes: 9659320 + 3109912 + 1016700,
   },
-  vanta: { lod1: "/models/lod1/electric-gt.glb", lod2: "/models/lod2/electric-gt.glb", bytes: 827560 + 114892 },
+  vanta: {
+    show: "/models/lod0/vanta-gt4.glb",
+    lod1: "/models/lod1/vanta-gt4.glb",
+    lod2: "/models/lod2/vanta-gt4.glb",
+    bytes: 536624 + 271780 + 116272,
+  },
   aegis: { lod1: "/models/lod1/family-sedan.glb", lod2: "/models/lod2/family-sedan.glb", bytes: 1006584 + 122748 },
 };
 
@@ -140,9 +145,9 @@ async function loadAll(renderer: THREE.WebGLRenderer): Promise<void> {
     for (const id of Object.keys(FILES) as Array<Exclude<CarId, "surge">>) {
       const file = FILES[id];
       const [show, lod1, lod2] = await Promise.all([
-        file.show ? loader.loadAsync(file.show).then((gltf) => buildLevel(gltf.scene, id)) : Promise.resolve(null),
-        loader.loadAsync(file.lod1).then((gltf) => buildLevel(gltf.scene, id)),
-        loader.loadAsync(file.lod2).then((gltf) => buildLevel(gltf.scene, id)),
+        file.show ? loader.loadAsync(file.show).then((gltf) => buildLevel(gltf.scene)) : Promise.resolve(null),
+        loader.loadAsync(file.lod1).then((gltf) => buildLevel(gltf.scene)),
+        loader.loadAsync(file.lod2).then((gltf) => buildLevel(gltf.scene)),
       ]);
       prepared.set(id, { show: show ?? lod1, lod1, lod2, fit: fitOf(id, show ?? lod1) });
     }
@@ -169,7 +174,7 @@ function fitOf(
   const scaleY = scaleZ;
   // Visual body drop only. The arch crown is already close to the tyre, so this
   // is the extra ride-height the fender can take before the tyre meets the lip.
-  const drop = id === "aegis" ? 0.078 : id === "vanta" ? 0.052 : 0;
+  const drop = id === "aegis" ? 0.078 : 0;
   const offsetZ = layout.frontZ - frontPos.z * scaleZ;
   return {
     scale: new THREE.Vector3(scaleX, scaleY, scaleZ),
@@ -179,7 +184,7 @@ function fitOf(
   };
 }
 
-function buildLevel(root: THREE.Object3D, id: Exclude<CarId, "surge">): Level {
+function buildLevel(root: THREE.Object3D): Level {
   root.updateMatrixWorld(true);
   const wheels = {} as Record<CarCorner, THREE.Group>;
   const uprights = {} as Record<CarCorner, THREE.Group>;
@@ -190,16 +195,15 @@ function buildLevel(root: THREE.Object3D, id: Exclude<CarId, "surge">): Level {
     uprights[corner] = taken.upright;
     radius[corner] = taken.radius;
   }
-  const skipSpoiler = id === "vanta";
   let tris = 0;
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     const material = materials[0];
-    const slot = materials.length > 1 ? "multi" : slotOf(mesh.name || "", material?.name || "", skipSpoiler);
+    const slot = materials.length > 1 ? "multi" : slotOf(mesh.name || "", material?.name || "", false);
     mesh.userData.slot = slot;
-    if (slot === "skip" || /plate/i.test(mesh.name) || (skipSpoiler && /spoiler/i.test(mesh.name))) mesh.visible = false;
+    if (slot === "skip" || /plate/i.test(mesh.name)) mesh.visible = false;
     tris += triCount(mesh.geometry);
   });
   markShared(root);
@@ -349,7 +353,7 @@ export function instantiateRealCar(vehicleId: string, look: CarLook): RealCarIns
     assignMaterials(clone, materials, look, paint, brake, vehicleId);
     holder.add(clone);
     mount.add(holder);
-    if (vehicleId === "vanta" || vehicleId === "aegis") mountRaceKit(holder, vehicleId, level.modelBox, look.accent);
+    if (vehicleId === "aegis") mountRaceKit(holder, vehicleId, level.modelBox, look.accent);
     lod.addLevel(mount, distance, 0.15);
   }
   const wheels = {} as RealCarInstance["wheels"];
@@ -419,33 +423,55 @@ function importedMaterial(
       body.color.set(0xffffff);
       body.emissive = new THREE.Color(0x000000);
       body.emissiveIntensity = 1;
-      body.envMapIntensity = 0.85;
-      // The painted cyan is a pale albedo. ACES turns that pastel, so the paint
-      // pixels are pushed to a saturated neon and given a little glow. Black
-      // panels stay dark because they fail the cyan test.
+      body.metalness = 0;
+      body.roughness = 0.48;
+      body.envMapIntensity = 0.2;
+      const clearcoat = body as THREE.MeshPhysicalMaterial;
+      if (clearcoat.clearcoat !== undefined) clearcoat.clearcoat = 0.08;
+      // Stay under the ACES shoulder. A brighter cyan clips to pale mint; this
+      // one keeps red at zero and green level with blue.
       body.onBeforeCompile = (shader) => {
+        shader.vertexShader = shader.vertexShader
+          .replace("#include <common>", "#include <common>\nvarying vec3 vLocalPos;")
+          .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLocalPos = position;");
         shader.fragmentShader = shader.fragmentShader
+          .replace("#include <common>", "#include <common>\nvarying vec3 vLocalPos;")
           .replace(
             "#include <map_fragment>",
             `#include <map_fragment>
              {
-               float cyan = clamp(diffuseColor.g * 1.5 + diffuseColor.b * 0.8 - diffuseColor.r * 1.6, 0.0, 1.0);
-               float paint = smoothstep(0.08, 0.3, cyan);
-               diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.02, 0.95, 1.0), paint);
+               float cyan = clamp(diffuseColor.g + diffuseColor.b * 1.15 - diffuseColor.r * 2.4, 0.0, 1.0);
+               float paint = smoothstep(0.04, 0.16, cyan);
+               // The blank hood panel is the pale patch forward of the cabin.
+               float hood = step(0.42, vLocalPos.z) * step(-0.05, vLocalPos.y) * step(vLocalPos.y, 0.28) * step(abs(vLocalPos.x), 0.35);
+               diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.012), paint * hood);
+               diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.0, 0.07, 0.08), paint * (1.0 - hood));
              }`,
           )
           .replace(
             "#include <emissivemap_fragment>",
             `#include <emissivemap_fragment>
              {
-               float cyan = clamp(diffuseColor.g * 1.5 + diffuseColor.b * 0.8 - diffuseColor.r * 1.6, 0.0, 1.0);
-               totalEmissiveRadiance += vec3(0.0, 0.42, 0.55) * smoothstep(0.08, 0.3, cyan);
+               float cyan = clamp(diffuseColor.g + diffuseColor.b * 1.15 - diffuseColor.r * 2.4, 0.0, 1.0);
+               float paint = smoothstep(0.04, 0.16, cyan);
+               float hood = step(0.42, vLocalPos.z) * step(-0.05, vLocalPos.y) * step(vLocalPos.y, 0.28) * step(abs(vLocalPos.x), 0.35);
+               totalEmissiveRadiance += vec3(0.0, 0.5, 0.58) * paint * (1.0 - hood);
              }`,
           );
       };
-      body.customProgramCacheKey = () => "vector-neon-cyan";
+      body.customProgramCacheKey = () => "vector-neon-cyan-v6";
       cache.set(key, body);
       mat = body;
+    }
+    return mat;
+  }
+  if (vehicleId === "vanta" && /^(BODY|GLASS|LIGHT|NUMBER|CALIPER|WHEEL)$/.test(source.name)) {
+    const key = `vanta:${source.name}:${source.uuid}`;
+    let mat = cache.get(key);
+    if (!mat) {
+      mat = source.clone();
+      retainTextures(mat);
+      cache.set(key, mat);
     }
     return mat;
   }
