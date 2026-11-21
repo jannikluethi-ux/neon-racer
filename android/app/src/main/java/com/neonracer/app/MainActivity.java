@@ -21,14 +21,23 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        allowIntroAutoplay();
         applyImmersiveMode();
 
+        // Back never finishes the activity. Escape pauses a race, and the
+        // cold-start film treats the same key as "skip".
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
                 evaluateInWebView(PAUSE_KEY_EVENT);
             }
         });
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        allowIntroAutoplay();
     }
 
     @Override
@@ -41,6 +50,12 @@ public class MainActivity extends BridgeActivity {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) applyImmersiveMode();
+    }
+
+    private void allowIntroAutoplay() {
+        if (bridge == null) return;
+        WebView webView = bridge.getWebView();
+        if (webView != null) webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
     }
 
     private void evaluateInWebView(String javascript) {

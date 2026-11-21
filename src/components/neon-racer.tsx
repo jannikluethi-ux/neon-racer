@@ -7,6 +7,7 @@ import { useGame } from "@/game/store";
 import { cupById, currentRound, ordinal, playerStanding, pointsForPlace, racedSeconds, roundsOf, standings } from "@/game/championship";
 import { medalName } from "@/game/mastery";
 import { CarSelect, CupBrief, CupConfirm, CupDifficulty, CupHome, TitleScreen, TrackSelect } from "@/components/race-screens";
+import { IntroVideo } from "@/components/intro-video";
 import { ProfileScreen } from "@/components/profile-screen";
 import { AI_CARS } from "@/game/tuning";
 import { vehicleById } from "@/game/vehicle-def";
@@ -129,7 +130,9 @@ export function NeonRacer() {
   const touchMode = useGame((s) => s.touch);
   const [engineError, setEngineError] = useState<string | null>(null);
   const [introOpen, setIntroOpen] = useState(false);
+  const [videoIntro, setVideoIntro] = useState(true);
   const [studio, setStudio] = useState(false);
+  const volume = useGame((s) => s.volume);
 
   // Escape / P toggle pause during a race; auto-pause when the tab is hidden.
   useEffect(() => {
@@ -153,11 +156,6 @@ export function NeonRacer() {
 
   useEffect(() => {
     useGame.getState().hydrate(loadSave());
-    try {
-      setIntroOpen(localStorage.getItem(INTRO_SEEN_KEY) !== "1");
-    } catch {
-      setIntroOpen(false);
-    }
     if (import.meta.env.DEV) {
       const params = new URLSearchParams(window.location.search);
       if (params.get("compare") === "1") setStudio(true);
@@ -166,6 +164,16 @@ export function NeonRacer() {
       else if (flag === "1") useGame.getState().setUnlockAll(true);
     }
   }, []);
+
+  // The how-to card waits until the cold-start film has left the screen.
+  useEffect(() => {
+    if (videoIntro) return;
+    try {
+      setIntroOpen(localStorage.getItem(INTRO_SEEN_KEY) !== "1");
+    } catch {
+      setIntroOpen(false);
+    }
+  }, [videoIntro]);
 
   const closeIntro = () => {
     try {
@@ -265,6 +273,7 @@ export function NeonRacer() {
       <canvas ref={miniRef} className="minimap" width={288} height={216} />
       <TouchControls />
       {introOpen && <IntroOverlay onClose={closeIntro} />}
+      {videoIntro && <IntroVideo volume={volume} onDone={() => setVideoIntro(false)} />}
       </>)}
     </div>
   );
