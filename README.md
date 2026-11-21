@@ -93,6 +93,12 @@ the track, AI, and handling all behave. It fails the build if anything regresses
 - **Vite** + **Nitro** (build + serverless deploy)
 - **Vitest-free testing** via the built-in `node:test` runner and `tsx`
 
+## Credits
+
+The opening film in `public/video/intro.mp4` (poster `public/video/intro_poster.jpg`)
+is the project owner's video. It plays once on each cold start, before the
+main menu, and can be skipped.
+
 ## License
 
 MIT © Neon Racer contributors — see [LICENSE](LICENSE).
