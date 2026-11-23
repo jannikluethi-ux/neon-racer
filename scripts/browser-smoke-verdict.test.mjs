@@ -279,7 +279,7 @@ test("baselineComparison fails closed on malformed or wrong-shape baselines", ()
 
 test("parseSmokeArgs defaults", () => {
   const parsed = parseSmokeArgs([], {});
-  assert.equal(parsed.url, "http://127.0.0.1:8080/");
+  assert.equal(parsed.url, "http://127.0.0.1:8080/?skipIntro=1");
   assert.equal(parsed.baseline, "");
   assert.equal(parsed.outPng, join(repoRoot(), "screenshots", "app-builder-preview.png"));
 });

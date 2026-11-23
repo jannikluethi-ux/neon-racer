@@ -41,8 +41,8 @@ in `src/game/car-model.ts`:
 | --- | ---: | ---: | ---: | ---: |
 | VECTOR GT3 | 2.50 m | 2.14 m | 0.145 m | 0.115 m |
 | VANTA GT4 | 2.38 m | 2.24 m | 0.150 m | 0.120 m |
-| SURGE LMP | 2.82 m | 2.20 m | 0.140 m | 0.110 m |
-| AEGIS TCR | 2.52 m | 2.36 m | 0.150 m | 0.120 m |
+| SURGE CONCEPT | 2.82 m | 2.20 m | 0.140 m | 0.110 m |
+| AEGIS PROTO | 2.52 m | 2.36 m | 0.150 m | 0.120 m |
 
 The floor values use the wheel-contact origin as zero. The asphalt deck is
 0.030 m above it, so nominal level-ground clearance is the floor value minus

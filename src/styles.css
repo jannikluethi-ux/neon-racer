@@ -465,6 +465,12 @@
   text-align: right;
 }
 
+/* Lap, time and gaps sit over bright scenery; a soft shadow keeps them legible. */
+.hud-right,
+.hud-position {
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.85), 0 0 12px rgb(0 0 0 / 0.5);
+}
+
 .hud-label {
   margin: 0;
   color: var(--color-muted);
@@ -855,7 +861,8 @@ input[type="range"] {
   justify-content: space-between;
   align-items: flex-end;
   gap: 0.75rem;
-  padding: 0.75rem max(0.85rem, env(safe-area-inset-right)) max(0.85rem, env(safe-area-inset-bottom)) max(0.85rem, env(safe-area-inset-left));
+  /* Keep the pads clear of the screen edge and of any gesture bar / notch. */
+  padding: 0.75rem max(1rem, calc(env(safe-area-inset-right) + 0.5rem)) max(1.1rem, calc(env(safe-area-inset-bottom) + 0.75rem)) max(1rem, calc(env(safe-area-inset-left) + 0.5rem));
   pointer-events: none;
 }
 
@@ -1050,6 +1057,60 @@ input[type="range"] {
   grid-area: drift;
   border-color: color-mix(in srgb, #ffb020 55%, var(--color-line));
   color: #ffe4b8;
+}
+
+.intro-video {
+  position: absolute;
+  z-index: 30;
+  inset: 0;
+  background: #000 url("/video/intro_poster.jpg") center / contain no-repeat;
+  opacity: 1;
+  transition: opacity 300ms linear;
+}
+
+.intro-video.is-fading {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.intro-video-media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  pointer-events: none;
+}
+
+.intro-video-hit {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.intro-video-hint {
+  position: absolute;
+  left: 50%;
+  bottom: max(1.1rem, env(safe-area-inset-bottom));
+  margin: 0;
+  padding: 0.35rem 0.75rem;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.45);
+  color: rgb(238 248 255 / 0.82);
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-video {
+    transition: none;
+  }
 }
 
 .intro-scrim {
@@ -1573,7 +1634,7 @@ input[type="range"] {
 @media (orientation: landscape) and (max-height: 34rem) {
   .touch-controls {
     padding-top: 0.45rem;
-    padding-bottom: max(0.55rem, env(safe-area-inset-bottom));
+    padding-bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.75rem));
   }
 
   .steering-wheel {
@@ -1621,4 +1682,242 @@ input[type="range"] {
 
 .pause-card .stack {
   margin-top: 0.5rem;
+}
+
+.game-root[data-phase="menu"] .minimap {
+  display: none;
+}
+
+.picker {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  /* Reset the old menu-card .picker box (36rem wide, padded) that this
+     full-screen showroom picker shares a class with. Without it the picker was
+     only 36rem wide, so the right arrow sat on the middle car and the dock was
+     squeezed. */
+  width: auto;
+  max-height: none;
+  padding: 0;
+  gap: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.picker-top,
+.picker-dock,
+.chev,
+.stage-hit,
+.view-chips {
+  pointer-events: auto;
+}
+
+.picker-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: max(0.85rem, env(safe-area-inset-top)) max(1.1rem, env(safe-area-inset-right)) 0 max(1.1rem, env(safe-area-inset-left));
+  text-shadow: 0 2px 18px rgb(0 0 0 / 0.85);
+}
+
+.picker-dock {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1.15fr) minmax(16rem, 1fr) auto;
+  gap: 1rem 1.4rem;
+  align-items: end;
+  padding: 1.1rem max(1.2rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(1.2rem, env(safe-area-inset-left));
+  background: linear-gradient(180deg, transparent, rgb(5 8 12 / 0.35) 18%, rgb(5 8 12 / 0.88));
+}
+
+.dock-copy h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(2.6rem, 5vw, 4.6rem);
+  line-height: 0.86;
+  letter-spacing: 0.03em;
+}
+
+.dock-copy p {
+  margin: 0.35rem 0 0;
+  max-width: 38rem;
+  color: var(--color-muted);
+}
+
+.dock-meta {
+  margin: 0.3rem 0 0;
+  color: var(--color-fg);
+  font-size: 0.92rem;
+  letter-spacing: 0.04em;
+}
+
+.class-chip {
+  display: inline-block;
+  margin-left: 0.7rem;
+  padding: 0.12rem 0.45rem 0.05rem;
+  border: 1px solid color-mix(in srgb, var(--color-cyan) 55%, transparent);
+  border-radius: 999px;
+  color: var(--color-cyan);
+  font-size: 0.42em;
+  letter-spacing: 0.16em;
+  vertical-align: 0.45em;
+}
+
+.stat-wide {
+  grid-template-columns: 4.2rem 1fr auto;
+}
+
+.view-chips {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.chip {
+  min-height: 2.4rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgb(8 12 18 / 0.45);
+  color: var(--color-muted);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.chip[aria-pressed="true"] {
+  color: #041016;
+  background: var(--color-cyan);
+}
+
+.chev {
+  position: absolute;
+  top: 42%;
+  z-index: 2;
+  width: 3rem;
+  height: 3rem;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(6 10 16 / 0.55);
+  color: var(--color-fg);
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.chev-left {
+  left: max(0.6rem, env(safe-area-inset-left));
+}
+
+.chev-right {
+  right: max(0.6rem, env(safe-area-inset-right));
+}
+
+.stage-hit {
+  position: absolute;
+  z-index: 1;
+  left: 4.2rem;
+  right: 4.2rem;
+  top: 4.2rem;
+  bottom: 13.5rem;
+  touch-action: none;
+}
+
+@media (max-width: 960px) {
+  .picker-dock {
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+  }
+
+  .dock-copy h2 {
+    font-size: 2.4rem;
+  }
+
+  .stage-hit {
+    bottom: 16rem;
+  }
+}
+
+/*
+ * Short landscape phones (e.g. 915x412, 844x390).
+ * Race HUD: lap and time move up beside the minimap, so the NITRO / DRIFT pads
+ * at the bottom right never cover them.
+ * Garage: the info panel becomes a left side panel and the showroom frames the
+ * cars in the free area to its right (see useStageCover / stageFraming).
+ * Keep the query in sync with SIDE_PANEL_QUERY in showroom-picker.tsx.
+ */
+@media (orientation: landscape) and (max-height: 34rem) {
+  .hud-side {
+    margin-top: -3.4rem;
+    margin-right: 7.2rem;
+    max-width: calc(50vw - clamp(4.75rem, 9.5vw, 6rem) - 8.6rem);
+  }
+
+  /* Up here the block sits over bright skyline, so give it the same glass
+     backing as the speedometer. */
+  .hud-right {
+    padding: 0.35rem 0.6rem 0.4rem;
+    border: 1px solid color-mix(in srgb, var(--color-cyan) 22%, transparent);
+    border-radius: 0.8rem;
+    background: color-mix(in srgb, #09121a 70%, transparent);
+  }
+
+  .picker {
+    --dock-w: clamp(17rem, 38vw, 22rem);
+  }
+
+  .picker-top {
+    position: relative;
+    z-index: 2;
+  }
+
+  .picker-dock {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: calc(var(--dock-w) + env(safe-area-inset-left));
+    grid-template-columns: 1fr;
+    align-content: end;
+    gap: 0.5rem;
+    overflow-y: auto;
+    padding: 4.1rem 1rem max(0.75rem, env(safe-area-inset-bottom)) max(1.1rem, env(safe-area-inset-left));
+    background: linear-gradient(90deg, rgb(5 8 12 / 0.92), rgb(5 8 12 / 0.8) 80%, rgb(5 8 12 / 0));
+  }
+
+  .dock-copy h2 {
+    font-size: clamp(1.9rem, 7.5vh, 2.4rem);
+  }
+
+  .dock-copy p {
+    margin-top: 0.25rem;
+    font-size: 0.86rem;
+  }
+
+  .picker-actions {
+    flex-direction: row;
+  }
+
+  .picker-actions .btn {
+    flex: 1 1 0;
+    min-height: 2.6rem;
+  }
+
+  .picker-actions .btn-primary {
+    flex-grow: 1.6;
+  }
+
+  .chev-left {
+    left: calc(var(--dock-w) + max(0.6rem, env(safe-area-inset-left)));
+  }
+
+  .stage-hit {
+    left: calc(var(--dock-w) + 4.2rem);
+    right: 4.2rem;
+    top: 3.6rem;
+    bottom: 0.5rem;
+  }
 }

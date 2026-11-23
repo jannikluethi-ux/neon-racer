@@ -31,8 +31,8 @@ in `src/game/vehicle-def.ts`; the meshes live in `src/game/car-model.ts`.
 | --- | ---: | ---: | ---: | ---: |
 | VECTOR GT3 | 2.50 m | 2.14 m | 0.145 m | 0.115 m |
 | VANTA GT4 | 2.38 m | 2.24 m | 0.150 m | 0.120 m |
-| SURGE LMP | 2.82 m | 2.20 m | 0.140 m | 0.110 m |
-| AEGIS TCR | 2.52 m | 2.36 m | 0.150 m | 0.120 m |
+| SURGE CONCEPT | 2.82 m | 2.20 m | 0.140 m | 0.110 m |
+| AEGIS PROTO | 2.52 m | 2.36 m | 0.150 m | 0.120 m |
 
 Wheelbase is measured between the modeled axle stations. Body width is twice
 the widest body station. The floor height is measured from the wheel-contact
@@ -93,6 +93,12 @@ the track, AI, and handling all behave. It fails the build if anything regresses
 - **Tailwind CSS v4** (styling)
 - **Vite** + **Nitro** (build + serverless deploy)
 - **Vitest-free testing** via the built-in `node:test` runner and `tsx`
+
+## Credits
+
+The opening film in `public/video/intro.mp4` (poster `public/video/intro_poster.jpg`)
+is the project owner's video. It plays once on each cold start, before the
+main menu, and can be skipped.
 
 ## License
 

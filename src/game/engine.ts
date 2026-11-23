@@ -23,8 +23,11 @@ import { applyContact, driftStateLabel } from "./vehicle";
 import { sampleAt } from "./track";
 import { wheelLayout } from "./car-model";
 import { kerbWeightProfile } from "./kerb";
-import { applySceneryQuality, buildScene, disposeBundle, drawMinimap, syncCar, type CarPaint, type CarVis } from "./visuals";
+import { applySceneryQuality, buildScene, disposeBundle, drawMinimap, setBodyDetail, syncCar, type CarPaint, type CarVis } from "./visuals";
+import { carAssetReport, preloadCarModels } from "./car-assets";
 import { buildEnvironment, type BuiltEnvironment } from "./environment";
+import { createShowroom, type Showroom } from "./showroom";
+import { createCompareScene, type CompareHandle } from "./compare-scene";
 import { themeFor } from "./track-def";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
@@ -128,6 +131,37 @@ function rankedResults(rank: readonly CarState[]): ResultRow[] {
 }
 
 export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null): () => void {
+  let dead = false;
+  let release: () => void = () => {
+    dead = true;
+  };
+  let renderer: THREE.WebGLRenderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
+  } catch {
+    window.dispatchEvent(new CustomEvent("game-fallback", { detail: "WebGL context could not be created." }));
+    return () => {};
+  }
+  void preloadCarModels(renderer)
+    .catch((err: unknown) => {
+      console.warn("Real car models did not load. The built-in bodies stay on screen.", err);
+    })
+    .then(() => {
+      if (dead) {
+        renderer.dispose();
+        return;
+      }
+      try {
+        release = mountGame(canvas, minimap, renderer);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to initialize engine.";
+        window.dispatchEvent(new CustomEvent("game-fallback", { detail: message }));
+      }
+    });
+  return () => release();
+}
+
+function mountGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null, renderer: THREE.WebGLRenderer): () => void {
   const params = new URLSearchParams(window.location.search);
   const qa = import.meta.env.DEV && params.get("qa") === "1";
   const sim = createSim(qa);
@@ -137,19 +171,12 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   let shownKey = `${sim.track.id}:${sim.cars[0]!.vehicleId}`;
   const audio = new AudioDirector();
 
-  let renderer: THREE.WebGLRenderer;
   /** Dev-only QA camera: park the view on one car and optionally hold time. */
   let inspect: InspectSpec | null = null;
   let soloCarIndex: number | null = null;
   let forceDressingVisibleForQa = false;
   /** Copy the live pose into the interpolator after a QA teleport. */
   let snapPose = false;
-  try {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
-  } catch {
-    window.dispatchEvent(new CustomEvent("game-fallback", { detail: "WebGL context could not be created." }));
-    return () => {};
-  }
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.08;
@@ -176,6 +203,11 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   bindEnv(raceBundle.scene);
   bindEnv(padBundle.scene);
   const camera = new THREE.PerspectiveCamera(62, 1, 0.2, 2800);
+  let showroom: Showroom | null = null;
+  const compare: CompareHandle | null =
+    import.meta.env.DEV && new URLSearchParams(window.location.search).get("compare") === "1"
+      ? createCompareScene(renderer)
+      : null;
   const composer = new EffectComposer(renderer);
   const renderPass = new RenderPass(bundle.scene, camera);
   const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.48, 0.52, 0.78);
@@ -223,6 +255,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     composer.setSize(w, h);
     camera.aspect = w / Math.max(1, h);
     camera.updateProjectionMatrix();
+    showroom?.setSize(w, h);
     const fog = bundle.scene.fog as THREE.FogExp2;
     const baseFog = typeof bundle.scene.userData.fogDensity === "number" ? bundle.scene.userData.fogDensity : 0.0042;
     if (fog) fog.density = q === "low" ? baseFog * 1.4 : q === "high" ? baseFog * 0.72 : baseFog;
@@ -238,9 +271,10 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     bloomPass.threshold = 1.02;
     applySceneryQuality(bundle, q, forceDressingVisibleForQa);
     const lamp = q === "low" ? 0 : q === "high" ? 6.2 : 3.3;
-    for (const view of bundle.cars) {
+    for (const view of [...raceBundle.cars, ...padBundle.cars]) {
       view.headLight.intensity = lamp;
       view.headLight.visible = lamp > 0;
+      setBodyDetail(view, q);
     }
   };
 
@@ -351,6 +385,8 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
         forceDressingVisibleForQa = visible;
         bundle.dressing.visible = visible;
       },
+      /** Dev-only: triangle counts for the imported bodies. */
+      modelStats: () => carAssetReport(),
       renderStats: () => {
         const sceneGeometries = new Set<THREE.BufferGeometry>();
         const sceneTextures = new Set<THREE.Texture>();
@@ -376,6 +412,8 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
           sceneTextures: sceneTextures.size,
         };
       },
+      /** Dev-only screen boxes of the garage cars for the layout check. */
+      showroomBoxes: () => showroom?.carBoxes() ?? [],
       /** Dev-only read of the current player telemetry for gameplay smoke tests. */
       getTelemetry: () => useGame.getState().telemetry,
     };
@@ -594,6 +632,10 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   const loop = (stamp: number) => {
     if (dead) return;
     raf = requestAnimationFrame(loop);
+    if (compare) {
+      compare.render();
+      return;
+    }
     clock.update(stamp);
     const frameDt = Math.min(0.05, clock.getDelta());
     const now = clock.getElapsed();
@@ -884,9 +926,22 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       sun.target.updateMatrixWorld();
     }
 
-    renderPass.scene = bundle.scene;
+    const showMenu = sim.phase === "menu" && showroom != null;
+    if (showMenu && showroom) {
+      showroom.update({
+        dt: frameDt,
+        screen: store.screen,
+        vehicleId: store.selectedVehicle,
+        quality: q,
+        reduced,
+      });
+    }
+    const viewScene = showMenu && showroom ? showroom.scene : bundle.scene;
+    const viewCamera = showMenu && showroom ? showroom.camera : camera;
+    renderPass.scene = viewScene;
+    renderPass.camera = viewCamera;
     renderer.info.reset();
-    if (q !== "high") renderer.render(bundle.scene, camera);
+    if (q !== "high") renderer.render(viewScene, viewCamera);
     else composer.render();
 
     hudAcc += frameDt;
@@ -900,6 +955,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     }
   };
 
+  showroom = createShowroom(renderer);
   applyQuality();
   pushHud(true);
   raf = requestAnimationFrame(loop);
@@ -921,6 +977,8 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     disposeBundle(padBundle);
     raceEnv.dispose();
     padEnv.dispose();
+    showroom?.dispose();
+    compare?.dispose();
     composer.dispose();
     renderer.dispose();
   };
