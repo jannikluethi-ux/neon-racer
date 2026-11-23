@@ -96,7 +96,8 @@ export function TitleScreen({ onShowHowTo }: { onShowHowTo: () => void }) {
         <li>W gas</li>
         <li>S brake</li>
         <li>A / D steer</li>
-        <li>Space or Shift nitro</li>
+        <li>Shift / B / N nitro</li>
+        <li>Space handbrake</li>
       </ul>
     </section>
   );
