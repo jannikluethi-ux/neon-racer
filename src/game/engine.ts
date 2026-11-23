@@ -23,7 +23,7 @@ import { applyContact, driftStateLabel } from "./vehicle";
 import { sampleAt } from "./track";
 import { wheelLayout } from "./car-model";
 import { kerbWeightProfile } from "./kerb";
-import { buildScene, disposeBundle, drawMinimap, syncCar, type CarPaint, type CarVis } from "./visuals";
+import { applySceneryQuality, buildScene, disposeBundle, drawMinimap, syncCar, type CarPaint, type CarVis } from "./visuals";
 import { buildEnvironment, type BuiltEnvironment } from "./environment";
 import { themeFor } from "./track-def";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
@@ -236,7 +236,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     bloomPass.strength = 0.24;
     bloomPass.radius = 0.5;
     bloomPass.threshold = 1.02;
-    bundle.dressing.visible = q !== "low";
+    applySceneryQuality(bundle, q, forceDressingVisibleForQa);
     const lamp = q === "low" ? 0 : q === "high" ? 6.2 : 3.3;
     for (const view of bundle.cars) {
       view.headLight.intensity = lamp;
@@ -721,7 +721,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     if (player.boosting && !reduced) shake = Math.max(shake, 0.035);
 
     const q = store.quality;
-    bundle.dressing.visible = forceDressingVisibleForQa || q !== "low";
+    applySceneryQuality(bundle, q, forceDressingVisibleForQa);
     const lamp = q === "low" ? 0 : q === "high" ? 6.2 : 3.3;
     for (let i = 0; i < sim.cars.length; i++) {
       const car = sim.cars[i]!;
