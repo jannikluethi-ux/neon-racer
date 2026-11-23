@@ -16,7 +16,7 @@
     "preview:restart": "node scripts/preview.mjs restart",
     "preview:stop": "node scripts/preview.mjs stop",
     "typecheck": "tsc --noEmit",
-    "test": "node --test 'scripts/**/*.test.mjs' && node --import tsx --test src/game/pause.test.ts src/game/kerb.test.ts src/game/contact.test.ts src/game/road-winding.test.ts src/game/settings.test.ts src/game/ai-traffic.test.ts src/game/race.test.ts src/game/championship.test.ts src/game/ai.test.ts src/game/vehicle.test.ts src/game/tires.test.ts src/game/track.test.ts src/game/save.test.ts src/game/scenery-quality.test.ts src/game/drift.test.ts",
+    "test": "node --test 'scripts/**/*.test.mjs' && node --import tsx --test src/game/pause.test.ts src/game/kerb.test.ts src/game/contact.test.ts src/game/road-winding.test.ts src/game/settings.test.ts src/game/ai-traffic.test.ts src/game/race.test.ts src/game/championship.test.ts src/game/ai.test.ts src/game/vehicle.test.ts src/game/tires.test.ts src/game/track.test.ts src/game/save.test.ts src/game/scenery-quality.test.ts src/game/drift.test.ts src/game/silhouette.test.ts src/game/intro-video.test.ts",
     "test:game": "node --import tsx src/game/race-check.ts && node --import tsx src/game/feel-check.ts",
     "lint": "eslint .",
     "format": "prettier --write ."

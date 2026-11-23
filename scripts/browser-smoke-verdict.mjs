@@ -36,7 +36,8 @@ export function parseSmokeArgs(argv, env = {}) {
     }
   }
   return {
-    url: positional[0] || "http://127.0.0.1:8080/",
+    // ?skipIntro=1 bypasses the cold-start intro film so the smoke sees the game.
+    url: positional[0] || "http://127.0.0.1:8080/?skipIntro=1",
     outPng: positional[1] || join(repoRoot(), "screenshots", "app-builder-preview.png"),
     baseline,
   };

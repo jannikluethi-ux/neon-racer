@@ -289,8 +289,8 @@ export const VANTA: VehicleDefinition = {
 /** Long gearing, low drag, calm rear. Slow until the straight opens up. */
 export const SURGE: VehicleDefinition = {
   id: "surge",
-  name: "SURGE LMP",
-  description: "Long-tail prototype. Top speed and high-speed stability.",
+  name: "SURGE CONCEPT",
+  description: "Gold concept hypercar. Top speed and high-speed stability.",
   startsUnlocked: false,
   color: 0xffe14a,
   body: {
@@ -382,8 +382,8 @@ export const SURGE: VehicleDefinition = {
 /** High grip and brakes. Runs out of breath on a long straight. */
 export const AEGIS: VehicleDefinition = {
   id: "aegis",
-  name: "AEGIS TCR",
-  description: "Wide touring car. Big brakes and grip for technical circuits.",
+  name: "AEGIS PROTO",
+  description: "Trackday hypercar. Big brakes and grip for technical circuits.",
   startsUnlocked: false,
   color: 0x9fd4ff,
   body: {

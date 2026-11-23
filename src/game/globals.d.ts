@@ -45,6 +45,13 @@ declare global {
       trackAt: (arc: number) => { half: number; curvature: number };
       setQuality: (quality: "low" | "medium" | "high") => void;
       setDressingVisible: (visible: boolean) => void;
+      modelStats: () => {
+        bytes: number;
+        loadMs: number;
+        textureBytes: number;
+        cars: Record<string, { showTris: number; showDraws: number; lod1Tris: number; lod2Tris: number; lod1Draws: number; lod2Draws: number }>;
+        presentation: Record<string, { triangles: number; draws: number }>;
+      };
       renderStats: () => {
         calls: number;
         triangles: number;
