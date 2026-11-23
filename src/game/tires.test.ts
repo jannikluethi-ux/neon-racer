@@ -18,6 +18,7 @@ function request(overrides: Partial<TireRequest> = {}): TireRequest {
     longAccel: 0,
     latAccel: 0,
     lift: 0,
+    handbrake: false,
     dt: 1 / 60,
     ...overrides,
   };

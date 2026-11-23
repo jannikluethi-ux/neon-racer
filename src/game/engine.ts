@@ -376,6 +376,8 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
           sceneTextures: sceneTextures.size,
         };
       },
+      /** Dev-only read of the current player telemetry for gameplay smoke tests. */
+      getTelemetry: () => useGame.getState().telemetry,
     };
   }
 

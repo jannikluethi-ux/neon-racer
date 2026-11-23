@@ -47,7 +47,8 @@ suspension movement and road grade change clearance while driving.
 | Steer | `A` / `D` or `←` / `→` | Left / right pads | Left stick |
 | Throttle | `W` or `↑` | Gas button | RT / RB (`7` / `5`) |
 | Brake / reverse | `S` or `↓` | Brake button | LT / LB (`6` / `4`) |
-| Boost (nitro) | `Space` or `Shift` | Boost button | `A` (`0`) / `B` (`1`) |
+| Boost (nitro) | `Shift` / `B` / `N` | Boost button | `A` (`0`) / `B` (`1`) |
+| Handbrake / drift | `Space` | Drift button | — |
 | Pause / resume | `Esc` or `P` | — | Start (`9`) |
 
 Switching tabs auto-pauses the race; return and press `Esc` / `P` (or Start) to

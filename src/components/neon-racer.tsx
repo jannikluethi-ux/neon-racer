@@ -37,7 +37,8 @@ function IntroOverlay({ onClose }: { onClose: () => void }) {
         <ul className="intro-controls">
           <li><span className="intro-glyph">↻</span><span><strong>Steer</strong><small>Drag around the wheel on the left.</small></span></li>
           <li><span className="intro-glyph">GO</span><span><strong>Gas / brake</strong><small>Hold the right pedals. Brake always overrides auto-accelerate.</small></span></li>
-          <li><span className="intro-glyph"><Zap size={17} /></span><span><strong>Nitro</strong><small>Hold NITRO on the right for a burst.</small></span></li>
+          <li><span className="intro-glyph"><Zap size={17} /></span><span><strong>Nitro</strong><small>Hold NITRO (Shift / B / N) for a burst.</small></span></li>
+          <li><span className="intro-glyph">HB</span><span><strong>Handbrake</strong><small>Hold DRIFT or press Space to slide through corners.</small></span></li>
           <li><span className="intro-glyph"><Pause size={17} /></span><span><strong>Pause</strong><small>Tap Pause in the race or press P / Esc.</small></span></li>
           <li><span className="intro-glyph"><Gauge size={17} /></span><span><strong>Auto-accelerate</strong><small>On by default on touch. Change it any time in Settings.</small></span></li>
         </ul>
@@ -107,6 +108,9 @@ function TouchControls() {
       <div className="action-cluster">
         <button type="button" className="pad boost" aria-label="Nitro" {...hold((v) => (touch.boost = v))}>
           <Zap size={18} /> NITRO
+        </button>
+        <button type="button" className="pad drift" aria-label="Handbrake" {...hold((v) => (touch.drift = v))}>
+          DRIFT
         </button>
         <button type="button" className="pad brake" {...hold((v) => (touch.brake = v))}>
           BRAKE
@@ -429,6 +433,16 @@ function GapList() {
   );
 }
 
+function DriftIndicator() {
+  const driftState = useGame((s) => s.telemetry.driftState);
+  const active = driftState !== "GRIP";
+  return (
+    <div className={`drift-readout${active ? " drift-active" : ""}`} aria-label={`Drift state ${driftState}`}>
+      <span className="drift-state">{active ? driftState : "GRIP"}</span>
+    </div>
+  );
+}
+
 function Hud() {
   const speed = useGame((s) => s.speed);
   const lap = useGame((s) => s.lap);
@@ -493,6 +507,7 @@ function Hud() {
             <span className="nitro-state"><Zap size={14} />{boosting ? "BOOST LIVE" : boost > 0.08 ? "NITRO READY" : "RECHARGING"}</span>
             <span className="nitro-bar"><i style={{ width: `${Math.round(boost * 100)}%` }} /></span>
           </div>
+          <DriftIndicator />
         </section>
         <div className="hud-side">
           <div className="hud-block hud-right">

@@ -44,7 +44,7 @@ function down(code: string): boolean {
 }
 
 export function setTestKeys(codes: string[]): void {
-  override = new Set(codes);
+  override = codes.length > 0 ? new Set(codes) : null;
 }
 
 export function attachInput(): () => void {
@@ -116,17 +116,21 @@ export function readCommand(): InputCommand {
   if (down("KeyD") || down("ArrowRight")) steer -= 1;
   let throttle = down("KeyW") || down("ArrowUp") ? 1 : 0;
   let brake = down("KeyS") || down("ArrowDown") ? 1 : 0;
-  let boost = down("Space") || down("ShiftLeft") || down("ShiftRight");
+  /** Space is the handbrake; Shift keys / B / N trigger nitro. */
+  let drift = down("Space");
+  let boost = down("ShiftLeft") || down("ShiftRight") || down("KeyB") || down("KeyN");
 
   if (!override) {
     steer += touch.steer;
     if (touch.throttle) throttle = 1;
     if (touch.brake) brake = 1;
+    if (touch.drift) drift = true;
     if (touch.boost) boost = true;
     const pad = gamepadBits();
     steer += pad.steer;
     throttle = Math.max(throttle, pad.throttle);
     brake = Math.max(brake, pad.brake);
+    drift = drift || pad.drift;
     boost = boost || pad.boost;
   }
 
@@ -138,7 +142,7 @@ export function readCommand(): InputCommand {
     throttle,
     brake,
     steer: clamp(steer, -1, 1),
-    drift: false,
+    drift,
     boost,
   };
 }
