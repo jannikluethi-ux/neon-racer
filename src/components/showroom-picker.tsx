@@ -9,6 +9,62 @@ import { TRACKS } from "@/game/track-def";
 import { VEHICLES, vehicleById } from "@/game/vehicle-def";
 import { measureVehicle, STAT_SCALES, type VehicleStats } from "@/game/vehicle-stats";
 
+/** Same queries as the picker layouts in styles.css. */
+const SIDE_PANEL_QUERY = "(orientation: landscape) and (max-height: 34rem)";
+const SHEET_QUERY = "(orientation: portrait)";
+
+type PickerLayout = "side" | "sheet" | "dock";
+
+function pickerLayout(): PickerLayout {
+  if (typeof window === "undefined" || !window.matchMedia) return "dock";
+  if (window.matchMedia(SIDE_PANEL_QUERY).matches) return "side";
+  if (window.matchMedia(SHEET_QUERY).matches) return "sheet";
+  return "dock";
+}
+
+/**
+ * Tells the showroom which part of the screen the info panel covers, so the
+ * cars (or circuits) are framed in the free area instead of behind the panel.
+ * The wide desktop dock reports no cover, which keeps that framing unchanged.
+ */
+function useStageCover() {
+  const ref = useRef<HTMLElement>(null);
+  const [layout, setLayout] = useState<PickerLayout>("dock");
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const measure = () => {
+      const next = pickerLayout();
+      setLayout(next);
+      const dock = root.querySelector<HTMLElement>(".picker-dock");
+      const top = root.querySelector<HTMLElement>(".picker-top");
+      const host = root.getBoundingClientRect();
+      const cover = { left: 0, right: 0, top: 0, bottom: 0 };
+      if (dock && next === "side") {
+        cover.left = Math.max(0, dock.getBoundingClientRect().right - host.left);
+      } else if (dock && next === "sheet") {
+        cover.bottom = Math.max(0, host.bottom - dock.getBoundingClientRect().top);
+        cover.top = top ? Math.max(0, top.getBoundingClientRect().bottom - host.top) : 0;
+      }
+      showcase.cover = cover;
+    };
+    measure();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    observer?.observe(root);
+    const dock = root.querySelector<HTMLElement>(".picker-dock");
+    if (dock) observer?.observe(dock);
+    window.addEventListener("resize", measure);
+    window.addEventListener("orientationchange", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("orientationchange", measure);
+      showcase.cover = { left: 0, right: 0, top: 0, bottom: 0 };
+    };
+  }, []);
+  return { ref, layout };
+}
+
 function snapshot() {
   const s = useGame.getState();
   return {
@@ -269,9 +325,10 @@ export function CarSelect() {
   };
 
   useCarouselKeys("car", step, chooseView);
+  const stage = useStageCover();
 
   return (
-    <section className="picker" data-carousel="cars" data-focus={def.id} data-view={view}>
+    <section ref={stage.ref} className="picker" data-carousel="cars" data-focus={def.id} data-view={view} data-layout={stage.layout}>
       <header className="picker-top">
         <p className="eyebrow">Garage</p>
         <ViewChips view={view} onView={chooseView} />
@@ -383,9 +440,10 @@ export function TrackSelect() {
   useCarouselKeys("track", step, chooseView);
 
   const canStart = openTrack;
+  const stage = useStageCover();
 
   return (
-    <section className="picker" data-carousel="tracks" data-focus={def.id}>
+    <section ref={stage.ref} className="picker" data-carousel="tracks" data-focus={def.id} data-layout={stage.layout}>
       <header className="picker-top">
         <div>
           <p className="eyebrow">Circuits</p>

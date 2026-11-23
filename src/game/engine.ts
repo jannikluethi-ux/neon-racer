@@ -412,6 +412,8 @@ function mountGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null,
           sceneTextures: sceneTextures.size,
         };
       },
+      /** Dev-only screen boxes of the garage cars for the layout check. */
+      showroomBoxes: () => showroom?.carBoxes() ?? [],
       /** Dev-only read of the current player telemetry for gameplay smoke tests. */
       getTelemetry: () => useGame.getState().telemetry,
     };

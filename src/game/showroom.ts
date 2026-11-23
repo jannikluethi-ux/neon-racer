@@ -5,7 +5,7 @@ import { buildEnvironment, type BuiltEnvironment } from "./environment";
 import { themeFor, TRACKS } from "./track-def";
 import { VEHICLES } from "./vehicle-def";
 import { buildTrackDiorama, type TrackDiorama } from "./track-diorama";
-import { showcase, wrapIndex } from "./showcase";
+import { showcase, stageFraming, wrapIndex } from "./showcase";
 import type { MenuScreen } from "./store";
 
 /**
@@ -20,8 +20,12 @@ export type Showroom = {
   camera: THREE.PerspectiveCamera;
   setSize: (width: number, height: number) => void;
   update: (frame: ShowroomFrame) => void;
+  /** Screen-space boxes (CSS px) of the visible garage cars, for layout QA. */
+  carBoxes: () => ShowroomCarBox[];
   dispose: () => void;
 };
+
+export type ShowroomCarBox = { id: string; focus: boolean; x: number; y: number; width: number; height: number };
 
 export type ShowroomFrame = {
   dt: number;
@@ -169,9 +173,45 @@ export function createShowroom(renderer: THREE.WebGLRenderer): Showroom {
     return model;
   });
 
+  const viewport = { width: 1, height: 1 };
+  /** Eased framing, so the cars glide when the panel layout changes. */
+  const framing = { offsetX: 0, offsetY: 0, fov: 36, distScale: 1 };
+  let viewOffsetOn = false;
   const setSize = (width: number, height: number) => {
+    viewport.width = Math.max(1, width);
+    viewport.height = Math.max(1, height);
     camera.aspect = width / Math.max(1, height);
     camera.updateProjectionMatrix();
+  };
+
+  const box = new THREE.Box3();
+  const corner = new THREE.Vector3();
+  const carBoxes = (): ShowroomCarBox[] => {
+    if (!cars.visible) return [];
+    camera.updateMatrixWorld();
+    const out: ShowroomCarBox[] = [];
+    views.forEach((view, index) => {
+      if (!view.root.visible) return;
+      box.setFromObject(view.root);
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (let i = 0; i < 8; i++) {
+        corner.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z);
+        corner.project(camera);
+        const sx = ((corner.x + 1) / 2) * viewport.width;
+        const sy = ((1 - corner.y) / 2) * viewport.height;
+        minX = Math.min(minX, sx);
+        maxX = Math.max(maxX, sx);
+        minY = Math.min(minY, sy);
+        maxY = Math.max(maxY, sy);
+      }
+      const id = VEHICLES[index]?.id ?? String(index);
+      const focus = Math.abs(wrapDelta(index, showcase.car, views.length)) < 0.4;
+      out.push({ id, focus, x: minX, y: minY, width: maxX - minX, height: maxY - minY });
+    });
+    return out;
   };
 
   const update = (frame: ShowroomFrame) => {
@@ -234,7 +274,13 @@ export function createShowroom(renderer: THREE.WebGLRenderer): Showroom {
     hemi.intensity = 0.34 + venue * 0.18;
 
     const u = venue * venue * (3 - 2 * venue);
-    const zoom = showcase.zoom;
+    const want = stageFraming(viewport.width, viewport.height, showcase.cover);
+    const frameRate = frame.reduced ? 60 : 7;
+    framing.offsetX = ease(framing.offsetX, want.offsetX, dt, frameRate);
+    framing.offsetY = ease(framing.offsetY, want.offsetY, dt, frameRate);
+    framing.fov = ease(framing.fov, want.fov, dt, frameRate);
+    framing.distScale = ease(framing.distScale, want.distScale, dt, frameRate);
+    const zoom = showcase.zoom * framing.distScale;
     const az = VIEW_AZ[showcase.view] + (frame.reduced || showcase.dragging ? 0 : Math.sin(clock.t * 0.35) * 0.05);
     // Side walls are at x = ±9.2 and the back wall at z = -8.2. A 9.8 m orbit
     // put the Side and Rear cameras outside the shell, so those views were black.
@@ -261,10 +307,18 @@ export function createShowroom(renderer: THREE.WebGLRenderer): Showroom {
     );
     camera.up.set(0, 1, 0);
     camera.lookAt(lookX * (1 - u), lookY + (-0.9 - lookY) * u, 0.04 * (1 - u));
-    const fov = (carsOpen ? 36 : 36) + 4 * u;
+    const fov = framing.fov + 4 * u;
     if (Math.abs(camera.fov - fov) > 0.05) {
       camera.fov = fov;
       camera.updateProjectionMatrix();
+    }
+    // Keep the cars centred in the part of the screen the info panel leaves free.
+    if (Math.abs(framing.offsetX) > 0.5 || Math.abs(framing.offsetY) > 0.5) {
+      camera.setViewOffset(viewport.width, viewport.height, -framing.offsetX, -framing.offsetY, viewport.width, viewport.height);
+      viewOffsetOn = true;
+    } else if (viewOffsetOn) {
+      camera.clearViewOffset();
+      viewOffsetOn = false;
     }
   };
 
@@ -289,5 +343,5 @@ export function createShowroom(renderer: THREE.WebGLRenderer): Showroom {
     env.dispose();
   };
 
-  return { scene, camera, setSize, update, dispose };
+  return { scene, camera, setSize, update, carBoxes, dispose };
 }

@@ -62,6 +62,8 @@ declare global {
         sceneGeometries: number;
         sceneTextures: number;
       };
+      /** Dev-only: screen boxes (CSS px) of the visible garage cars. */
+      showroomBoxes: () => { id: string; focus: boolean; x: number; y: number; width: number; height: number }[];
       /** Dev-only telemetry snapshot for gameplay smoke tests. */
       getTelemetry: () => Telemetry;
     };
