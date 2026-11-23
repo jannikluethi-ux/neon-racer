@@ -18,3 +18,22 @@ local.properties
 /screenshots/
 /Cars/
 /startup.sh
+
+# Local reference assets and concept material — not production game assets.
+/2026_kralzfiller_trackday_v10/
+/concept_sport_car/
+/race_car_01/
+/race_car_01.zip
+/selva_hypercar_concept_by_max_hordin_2019/
+/Intro Video/
+/Pictures/
+/output/
+/FINAL-AUDIT-REPORT.pdf
+/Neon Racer_Audit_Codex_211126.pdf
+/image.jpg
+/image-2.jpg
+
+# Temporary ad-hoc QA scripts superseded by the *.test.ts suite.
+/test-gameplay.mjs
+/test-gameplay2.mjs
+/test-race.mjs
