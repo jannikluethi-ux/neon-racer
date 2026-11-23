@@ -3,8 +3,17 @@ import type { Sample, Track } from "./track";
 import type { TrackTheme } from "./track-def";
 
 /**
- * Visual dressing only. Nothing here is consulted by collision, AI, or timing.
+ * Environment geometry. Nothing here is consulted by collision, AI, or timing.
  * Local +X is the driver's left (off the racing surface when |x| > half width).
+ *
+ * Output lands in one of two layers (see `addScenery`):
+ *
+ * - `structure` — geometry the racing surface is built on or enclosed by:
+ *   tunnel shells and the columns, piers, braces and pylons that carry an
+ *   elevated road. Dropping it would leave the track floating or open, so the
+ *   quality setting never touches it.
+ * - `dressing` — buildings, props, signage and lights. The Low quality
+ *   setting drops this layer.
  */
 
 type Part = [number, number, number, number, number, number, number];
@@ -100,6 +109,23 @@ class Batch {
     }
   }
 }
+
+/** One scenery output layer: batched geometry flushed under a scene group. */
+type SceneryLayer = {
+  boxes: Batch;
+  cyl: Batch;
+  parent: THREE.Object3D;
+};
+
+/**
+ * `structure` carries the geometry the racing surface is built on or enclosed
+ * by (tunnels, elevated-road supports) and survives every quality level;
+ * `dressing` carries the decorative remainder and is dropped on Low.
+ */
+export type SceneryLayers = {
+  structure: SceneryLayer;
+  dressing: SceneryLayer;
+};
 
 function std(color: number, rough: number, metal: number, emissive = 0x000000, intensity = 0): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
@@ -621,9 +647,14 @@ function populateCity(boxes: Batch, track: Track, theme: TrackTheme, rng: () => 
   });
 }
 
-function populateYard(boxes: Batch, cyl: Batch, track: Track, rng: () => number): void {
+/** `layers.structure` carries the elevated deck's substructure; the rest is dressing. */
+function populateYard(layers: SceneryLayers, track: Track, rng: () => number): void {
+  const struct = layers.structure.boxes;
+  const boxes = layers.dressing.boxes;
+  const cyl = layers.dressing.cyl;
   const c = centroid(track);
   const ground = track.minY;
+  // Viaduct substructure: the deck the cars drive on rests on these columns.
   each(track.samples, 16, 4, rng, (s) => {
     const drop = s.y - ground;
     if (drop < 2.3) return;
@@ -633,15 +664,15 @@ function populateYard(boxes: Batch, cyl: Batch, track: Track, rng: () => number)
       const lx = side * (s.width * 0.5 + 2.85);
       const p = new THREE.Vector3(lx, 0, 0).applyMatrix4(m);
       const h = Math.max(2.2, drop);
-      boxes.add(0, s.x + p.x, ground + h * 0.5, s.z + p.z, q, 1.15, h, 1.15);
-      boxes.add(1, s.x + p.x, ground + h - 0.25, s.z + p.z, q, 2.1, 0.38, 2.1);
-      boxes.addLocal(1, s, q, m, lx, -0.55, 0, 0.55, 0.42, 14);
+      struct.add(0, s.x + p.x, ground + h * 0.5, s.z + p.z, q, 1.15, h, 1.15);
+      struct.add(1, s.x + p.x, ground + h - 0.25, s.z + p.z, q, 2.1, 0.38, 2.1);
+      struct.addLocal(1, s, q, m, lx, -0.55, 0, 0.55, 0.42, 14);
     }
-    boxes.addLocal(1, s, q, m, 0, -1.15, 0, s.width + 5.2, 0.42, 0.85);
-    if (rng() > 0.55) boxes.addLocal(1, s, q, m, 0, -drop * 0.45, 0, s.width + 5.4, 0.22, 0.28);
+    struct.addLocal(1, s, q, m, 0, -1.15, 0, s.width + 5.2, 0.42, 0.85);
+    if (rng() > 0.55) struct.addLocal(1, s, q, m, 0, -drop * 0.45, 0, s.width + 5.4, 0.22, 0.28);
     if (rng() > 0.7) {
       const side = outerSign(s, c);
-      boxes.addLocal(1, s, q, m, side * (s.width * 0.5 + 4.6), -1.7, 0, 1.05, 0.12, 10);
+      struct.addLocal(1, s, q, m, side * (s.width * 0.5 + 4.6), -1.7, 0, 1.05, 0.12, 10);
     }
   });
   let braces = 0;
@@ -658,7 +689,7 @@ function populateYard(boxes: Batch, cyl: Batch, track: Track, rng: () => number)
     const wq = q.clone().multiply(local);
     const len = Math.hypot(span, rise);
     const p = new THREE.Vector3(0, -drop * 0.38, 0).applyMatrix4(m);
-    boxes.add(1, s.x + p.x, s.y + p.y, s.z + p.z, wq, len, 0.18, 0.18);
+    struct.add(1, s.x + p.x, s.y + p.y, s.z + p.z, wq, len, 0.18, 0.18);
     braces++;
   });
   const yardStraight = straightOf(track, 0);
@@ -744,11 +775,15 @@ function populateYard(boxes: Batch, cyl: Batch, track: Track, rng: () => number)
   }
 }
 
-function populateCoast(parent: THREE.Object3D, boxes: Batch, cyl: Batch, track: Track, theme: TrackTheme, rng: () => number): void {
+function populateCoast(layers: SceneryLayers, track: Track, theme: TrackTheme, rng: () => number): void {
+  const struct = layers.structure;
+  const parent = layers.dressing.parent;
+  const cyl = layers.dressing.cyl;
   const c = centroid(track);
   const waterY = track.minY - 0.2;
 
-  // Shoulders piers stay under the deck, inset from the edge. Do not move them inward.
+  // Bridge substructure: piers carry the elevated deck. They stay under the
+  // deck, inset from the edge. Do not move them inward.
   const dummy = new THREE.Object3D();
   const pierGeo = new THREE.BoxGeometry(1.1, 1, 1.1);
   const pierMat = std(0x8d99a3, 0.46, 0.42);
@@ -768,13 +803,13 @@ function populateCoast(parent: THREE.Object3D, boxes: Batch, cyl: Batch, track: 
       dummy.updateMatrix();
       piers.setMatrixAt(pi, dummy.matrix);
       const capY = track.minY + h - 0.15;
-      boxes.add(1, s.x + s.rx * lat, capY, s.z + s.rz * lat, new THREE.Quaternion(), 1.55, 0.28, 1.55);
+      struct.boxes.add(1, s.x + s.rx * lat, capY, s.z + s.rz * lat, new THREE.Quaternion(), 1.55, 0.28, 1.55);
       pi++;
     }
   }
   piers.count = pi;
   piers.frustumCulled = false;
-  parent.add(piers);
+  struct.parent.add(piers);
 
   // Offshore turbines. Far enough that blades cannot reach the racing line.
   const bladeGeo = new THREE.BoxGeometry(0.42, 16, 0.18);
@@ -848,25 +883,25 @@ function populateCoast(parent: THREE.Object3D, boxes: Batch, cyl: Batch, track: 
     const side = s.width * 0.5 + 6.2;
     const h = 24;
     for (const sign of [1, -1]) {
-      boxes.addLocal(0, s, bq, bm, sign * side, h * 0.16, 0, 3.6, h * 0.32, 3.2);
-      boxes.addLocal(1, s, bq, bm, sign * side, h * 0.58, 0, 1.7, h * 0.72, 1.7);
-      boxes.addLocal(1, s, bq, bm, sign * side, h + 0.7, 0, 2.6, 1.5, 2.4);
-      boxes.addLocal(5, s, bq, bm, sign * side, h + 1.2, 0, 1.2, 0.28, 1.2);
+      struct.boxes.addLocal(0, s, bq, bm, sign * side, h * 0.16, 0, 3.6, h * 0.32, 3.2);
+      struct.boxes.addLocal(1, s, bq, bm, sign * side, h * 0.58, 0, 1.7, h * 0.72, 1.7);
+      struct.boxes.addLocal(1, s, bq, bm, sign * side, h + 0.7, 0, 2.6, 1.5, 2.4);
+      struct.boxes.addLocal(5, s, bq, bm, sign * side, h + 1.2, 0, 1.2, 0.28, 1.2);
     }
-    boxes.addLocal(1, s, bq, bm, 0, h + 0.15, 0, side * 2 + 3, 1.15, 1.45);
+    struct.boxes.addLocal(1, s, bq, bm, 0, h + 0.15, 0, side * 2 + 3, 1.15, 1.45);
     for (const sign of [1, -1]) {
       for (let k = 0; k < 3; k++) {
         const x = sign * (s.width * 0.5 + 1.8 + k * 1.6);
-        boxes.addLocal(1, s, bq, bm, x, h * 0.5, 0.4, 0.07, h, 0.07);
+        struct.boxes.addLocal(1, s, bq, bm, x, h * 0.5, 0.4, 0.07, h, 0.07);
       }
     }
   }
-  // Approach gantry legs already exist; add a fascia rhythm under elevated sections via boxes.
+  // Deck fascia under elevated sections — part of the bridge, not scenery.
   each(track.samples, 34, 0, rng, (s) => {
     if (s.y - track.minY < 3.5) return;
     const bm = basisOf(s);
     const bq = new THREE.Quaternion().setFromRotationMatrix(bm);
-    boxes.addLocal(1, s, bq, bm, 0, -0.85, 0, s.width - 1.2, 0.22, 0.35);
+    struct.boxes.addLocal(1, s, bq, bm, 0, -0.85, 0, s.width - 1.2, 0.22, 0.35);
   });
 
   // Sparse scrub on the outer bank, never on asphalt.
@@ -1105,7 +1140,7 @@ function addTunnelShell(boxes: Batch, parent: THREE.Object3D, track: Track, them
   }
 }
 
-export function addScenery(parent: THREE.Object3D, track: Track, theme: TrackTheme): void {
+export function addScenery(structure: THREE.Object3D, dressing: THREE.Object3D, track: Track, theme: TrackTheme): void {
   const kind = theme.kind;
   const rng = mulberry32(theme.citySeed);
   const city = kind === "city";
@@ -1124,24 +1159,33 @@ export function addScenery(parent: THREE.Object3D, track: Track, theme: TrackThe
   const vert = facadeMat(facadeTex("vert"), city ? 1.2 : 0.45);
   const cluster = facadeMat(facadeTex("cluster"), city ? 1.05 : 0.4);
   const works = facadeMat(facadeTex("works"), yard || core ? 1.15 : 0.35);
-  const boxes = new Batch(
-    [concrete, steel, glass, trim, windows, accent, farMat, band, vert, cluster, works],
-    [false, false, false, false, true, false, false, false, false, false, false],
-  );
+  const boxMats = [concrete, steel, glass, trim, windows, accent, farMat, band, vert, cluster, works];
+  const boxTinted = [false, false, false, false, true, false, false, false, false, false, false];
   const tank = std(yard ? 0x3a342c : 0x343034, 0.46, 0.62);
   const scrub = std(0x1a3330, 0.9, 0.02);
   const pipe = std(core ? 0x4a4044 : 0x3e3a36, 0.38, 0.7);
-  const cyl = new Batch([tank, scrub, pipe], [false, false, false]);
+  const cylMats = [tank, scrub, pipe];
+  const cylTinted = [false, false, false];
 
-  furniture(boxes, track, kind, rng);
-  if (city) populateCity(boxes, track, theme, rng);
-  if (yard) populateYard(boxes, cyl, track, rng);
-  if (coast) populateCoast(parent, boxes, cyl, track, theme, rng);
-  if (core) populateCore(parent, boxes, cyl, track, rng);
-  addTunnelShell(boxes, parent, track, theme);
+  // Both layers share one material set, so quality changes what is drawn, not
+  // how the environment is shaded.
+  const layers: SceneryLayers = {
+    structure: { boxes: new Batch(boxMats, boxTinted), cyl: new Batch(cylMats, cylTinted), parent: structure },
+    dressing: { boxes: new Batch(boxMats, boxTinted), cyl: new Batch(cylMats, cylTinted), parent: dressing },
+  };
+  const dress = layers.dressing;
+
+  furniture(dress.boxes, track, kind, rng);
+  if (city) populateCity(dress.boxes, track, theme, rng);
+  if (yard) populateYard(layers, track, rng);
+  if (coast) populateCoast(layers, track, theme, rng);
+  if (core) populateCore(dress.parent, dress.boxes, dress.cyl, track, rng);
+  addTunnelShell(layers.structure.boxes, layers.structure.parent, track, theme);
 
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
   const cylGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 8);
-  boxes.flush(parent, boxGeo);
-  cyl.flush(parent, cylGeo);
+  for (const layer of [layers.structure, layers.dressing]) {
+    layer.boxes.flush(layer.parent, boxGeo);
+    layer.cyl.flush(layer.parent, cylGeo);
+  }
 }

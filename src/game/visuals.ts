@@ -66,10 +66,28 @@ export type SceneBundle = {
   smoke: TireSmoke;
   skids: SkidMarks;
   flashes: ImpactFlashes;
+  /** Essential track structure (tunnels, elevated-road supports). Never hidden. */
+  structure: THREE.Group;
+  /** Decorative scenery. Dropped on Low quality. */
   dressing: THREE.Group;
   miniTrack: Path2D | null;
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
 };
+
+/**
+ * Quality policy for the environment. Only decorative dressing is dropped on
+ * Low: the road and the structures it is built on or enclosed by (tunnels,
+ * elevated-road supports) must stay, or the racing environment becomes
+ * misleading — a floating viaduct or an open tunnel.
+ */
+export function applySceneryQuality(
+  bundle: Pick<SceneBundle, "structure" | "dressing">,
+  quality: "low" | "medium" | "high",
+  forceDressing = false,
+): void {
+  bundle.dressing.visible = forceDressing || quality !== "low";
+  bundle.structure.visible = true;
+}
 
 export type CarPaint = {
   color: number;
@@ -772,6 +790,8 @@ export function buildScene(track: Track, carsIn: CarPaint[]): SceneBundle {
 	// from one module so track geometry and road materials stay separable.
 	const roadSurfaces = buildRoadSurfaces(track, theme);
 	scene.add(roadSurfaces.group);
+	const structure = new THREE.Group();
+	scene.add(structure);
 	const dressing = new THREE.Group();
 	scene.add(dressing);
 	const dummy = new THREE.Object3D();
@@ -917,18 +937,19 @@ export function buildScene(track: Track, carsIn: CarPaint[]): SceneBundle {
 		scene.add(glint);
 	}
 	addStartGantry(dressing, track, theme);
-	// Scenery is pure visual dressing (never consulted by physics/AI/timing),
-	// so load it lazily to keep it out of the initial engine chunk. Splitting
-	// per track: only the selected track's theme module is fetched. Attaches
-	// to `dressing` when the module resolves; guarded so a disposed bundle
-	// (track switched away) never receives stale geometry.
+	// Scenery is visual only (never consulted by physics/AI/timing), so load it
+	// lazily to keep it out of the initial engine chunk. Splitting per track:
+	// only the selected track's theme module is fetched. It fills `structure`
+	// (tunnels, elevated-road supports) and `dressing` (decor) when the module
+	// resolves; guarded so a disposed bundle (track switched away) never
+	// receives stale geometry.
 	void import("./scenery")
 		.then(({ addScenery }) => {
-			if (dressing.userData.disposed) return; // bundle disposed before load
-			addScenery(dressing, track, theme);
+			if (structure.userData.disposed || dressing.userData.disposed) return; // bundle disposed before load
+			addScenery(structure, dressing, track, theme);
 		})
 		.catch(() => {
-			// Scenery is decorative; a failed load leaves the track playable.
+			// Scenery is visual only; a failed load leaves the track playable.
 		});
 	for (let i = 0; i < 6; i++) {
 		const s = track.samples[Math.floor(i * track.samples.length / 6)];
@@ -961,6 +982,7 @@ export function buildScene(track: Track, carsIn: CarPaint[]): SceneBundle {
 		smoke: new TireSmoke(scene),
 		skids: new SkidMarks(scene),
 		flashes: new ImpactFlashes(scene),
+		structure,
 		dressing,
 		miniTrack: null,
 		bounds: {
@@ -1054,21 +1076,23 @@ export function disposeBundle(bundle: SceneBundle): void {
 	const sun = bundle.scene.userData.sun as THREE.DirectionalLight | undefined;
 	sun?.shadow.map?.dispose();
 	if (sun) sun.shadow.map = null;
-	// Mark the dressing group so a pending lazy scenery load (see buildScene)
+	// Mark both scenery layers so a pending lazy scenery load (see buildScene)
 	// skips attaching geometry to an already-disposed bundle.
-	(bundle.dressing as THREE.Group & { userData?: Record<string, unknown> }).userData.disposed = true;
 	const seenGeo = new Set<THREE.BufferGeometry>();
 	const seenMat = new Set<THREE.Material>();
 	const seenTex = new Set<THREE.Texture>();
-	const sceneryData = bundle.dressing.userData;
-	const ownedSceneryGeometries = sceneryData.ownedSceneryGeometries as THREE.BufferGeometry[] | undefined;
-	for (const geometry of ownedSceneryGeometries ?? []) {
-		if (SHARED_GEOS.has(geometry) || seenGeo.has(geometry)) continue;
-		seenGeo.add(geometry);
-		geometry.dispose();
+	for (const layer of [bundle.structure, bundle.dressing]) {
+		(layer as THREE.Group & { userData?: Record<string, unknown> }).userData.disposed = true;
+		const sceneryData = layer.userData;
+		const ownedSceneryGeometries = sceneryData.ownedSceneryGeometries as THREE.BufferGeometry[] | undefined;
+		for (const geometry of ownedSceneryGeometries ?? []) {
+			if (SHARED_GEOS.has(geometry) || seenGeo.has(geometry)) continue;
+			seenGeo.add(geometry);
+			geometry.dispose();
+		}
+		const ownedSceneryMaterials = sceneryData.ownedSceneryMaterials as THREE.Material[] | undefined;
+		for (const material of ownedSceneryMaterials ?? []) disposeMaterialOnce(material, seenMat, seenTex);
 	}
-	const ownedSceneryMaterials = sceneryData.ownedSceneryMaterials as THREE.Material[] | undefined;
-	for (const material of ownedSceneryMaterials ?? []) disposeMaterialOnce(material, seenMat, seenTex);
 	bundle.scene.traverse((obj) => {
 		if (underRoad(obj, bundle.road.group)) return;
 		const mesh = obj as THREE.Mesh;
