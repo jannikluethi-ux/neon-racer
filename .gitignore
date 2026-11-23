@@ -17,6 +17,7 @@ android/build/
 local.properties
 /screenshots/
 /Cars/
+/Intro Video/
 /startup.sh
 
 # Local reference assets and concept material — not production game assets.

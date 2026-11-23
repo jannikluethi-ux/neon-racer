@@ -25,6 +25,7 @@ import { wheelLayout } from "./car-model";
 import { kerbWeightProfile } from "./kerb";
 import { applySceneryQuality, buildScene, disposeBundle, drawMinimap, syncCar, type CarPaint, type CarVis } from "./visuals";
 import { buildEnvironment, type BuiltEnvironment } from "./environment";
+import { createShowroom, type Showroom } from "./showroom";
 import { themeFor } from "./track-def";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
@@ -176,6 +177,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
   bindEnv(raceBundle.scene);
   bindEnv(padBundle.scene);
   const camera = new THREE.PerspectiveCamera(62, 1, 0.2, 2800);
+  let showroom: Showroom | null = null;
   const composer = new EffectComposer(renderer);
   const renderPass = new RenderPass(bundle.scene, camera);
   const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.48, 0.52, 0.78);
@@ -223,6 +225,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     composer.setSize(w, h);
     camera.aspect = w / Math.max(1, h);
     camera.updateProjectionMatrix();
+    showroom?.setSize(w, h);
     const fog = bundle.scene.fog as THREE.FogExp2;
     const baseFog = typeof bundle.scene.userData.fogDensity === "number" ? bundle.scene.userData.fogDensity : 0.0042;
     if (fog) fog.density = q === "low" ? baseFog * 1.4 : q === "high" ? baseFog * 0.72 : baseFog;
@@ -884,9 +887,22 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
       sun.target.updateMatrixWorld();
     }
 
-    renderPass.scene = bundle.scene;
+    const showMenu = sim.phase === "menu" && showroom != null;
+    if (showMenu && showroom) {
+      showroom.update({
+        dt: frameDt,
+        screen: store.screen,
+        vehicleId: store.selectedVehicle,
+        quality: q,
+        reduced,
+      });
+    }
+    const viewScene = showMenu && showroom ? showroom.scene : bundle.scene;
+    const viewCamera = showMenu && showroom ? showroom.camera : camera;
+    renderPass.scene = viewScene;
+    renderPass.camera = viewCamera;
     renderer.info.reset();
-    if (q !== "high") renderer.render(bundle.scene, camera);
+    if (q !== "high") renderer.render(viewScene, viewCamera);
     else composer.render();
 
     hudAcc += frameDt;
@@ -900,6 +916,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     }
   };
 
+  showroom = createShowroom(renderer);
   applyQuality();
   pushHud(true);
   raf = requestAnimationFrame(loop);
@@ -921,6 +938,7 @@ export function startGame(canvas: HTMLCanvasElement, minimap: HTMLCanvasElement 
     disposeBundle(padBundle);
     raceEnv.dispose();
     padEnv.dispose();
+    showroom?.dispose();
     composer.dispose();
     renderer.dispose();
   };
