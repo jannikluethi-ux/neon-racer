@@ -50,22 +50,6 @@ export type TireResult = {
   wheelspin: number;
 };
 
-const result: TireResult = {
-  drive: 0,
-  lat: 0,
-  yawAccel: 0,
-  longSlip: 0,
-  latSlip: 0,
-  rearSlip: 0,
-  longUse: 0,
-  latUse: 0,
-  frontUse: 0,
-  rearUse: 0,
-  frontLoad: 0.5,
-  rearLoad: 0.5,
-  wheelspin: 0,
-};
-
 function eat(sat: number, weight: number): number {
   const x = sat * weight;
   const c = x < 0 ? 0 : x > 1 ? 1 : x;
@@ -143,18 +127,21 @@ export function evalTires(req: TireRequest, def: VehicleDefinition = VECTOR): Ti
   yawAccel -= req.yawRate * (def.yawDamp + speed * def.yawDampSpeed);
 
   const staticLong = longLoad > 0.5 ? longLoad : 0.5;
-  result.drive = drive;
-  result.lat = lat;
-  result.yawAccel = yawAccel;
-  result.longSlip = longSlip;
-  result.latSlip = normF;
-  result.rearSlip = normR;
-  result.longUse = clamp(Math.abs(drive) / staticLong, 0, 1.4);
-  result.frontUse = Math.abs(normF);
-  result.rearUse = Math.abs(normR);
-  result.latUse = Math.max(result.frontUse, result.rearUse);
-  result.frontLoad = frontLoad;
-  result.rearLoad = rearLoad;
-  result.wheelspin = net > 0 && longSlip > 0.95 ? clamp((longSlip - 0.95) / 1.15, 0, 1) : 0;
-  return result;
+  const frontUse = Math.abs(normF);
+  const rearUse = Math.abs(normR);
+  return {
+    drive,
+    lat,
+    yawAccel,
+    longSlip,
+    latSlip: normF,
+    rearSlip: normR,
+    longUse: clamp(Math.abs(drive) / staticLong, 0, 1.4),
+    frontUse,
+    rearUse,
+    latUse: Math.max(frontUse, rearUse),
+    frontLoad,
+    rearLoad,
+    wheelspin: net > 0 && longSlip > 0.95 ? clamp((longSlip - 0.95) / 1.15, 0, 1) : 0,
+  };
 }
