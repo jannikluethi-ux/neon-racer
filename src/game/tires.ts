@@ -31,6 +31,8 @@ export type TireRequest = {
   longAccel: number;
   latAccel: number;
   lift: number;
+  /** Handbrake / drift input. Reduces rear lateral grip without touching the engine. */
+  handbrake: boolean;
   dt: number;
 };
 
@@ -67,10 +69,19 @@ export function evalTires(req: TireRequest, def: VehicleDefinition = VECTOR): Ti
   const latDf = 1 + (def.latDownforce * speed * speed) / 4200;
   const air = req.airborne ? def.airGrip : 1;
 
+  /** Handbrake grip reduction ramps in with speed so low-speed use stays predictable. */
+  const handbrakeEffect = req.handbrake ? Math.min(1, Math.max(0, speed - 4) / 10) : 0;
+
   let frontLoad = 0.5 - clamp(req.longAccel * def.loadTransfer, -def.loadClamp, def.loadClamp);
   frontLoad = clamp(frontLoad + req.lift * def.liftFront, 0.3, 0.7);
-  const rearLoad = 1 - frontLoad;
+  let rearLoad = 1 - frontLoad;
   const latLoss = 1 - Math.min(0.12, Math.abs(req.latAccel) * def.latUnload);
+
+  if (handbrakeEffect > 0) {
+    const shift = 0.08 * handbrakeEffect;
+    frontLoad = clamp(frontLoad + shift, 0.3, 0.7);
+    rearLoad = 1 - frontLoad;
+  }
 
   const peakLat = def.slipPeak + def.slipWiden / (1 + speed / def.slipWidenSpeed);
   const frontPeak = peakLat * def.frontPeakMul;
@@ -115,7 +126,11 @@ export function evalTires(req: TireRequest, def: VehicleDefinition = VECTOR): Ti
   const rearEat = eat(sat, driving ? def.longCombineDriveRear : def.longCombineBrakeRear);
   const frontCap =
     def.latGrip * def.frontShare * latDf * air * frontEat * (frontLoad / 0.5) * latLoss;
-  const rearCap = def.latGrip * def.rearShare * latDf * air * rearEat * (rearLoad / 0.5) * latLoss;
+  let rearCap = def.latGrip * def.rearShare * latDf * air * rearEat * (rearLoad / 0.5) * latLoss;
+  if (handbrakeEffect > 0) {
+    // Drop rear lateral grip so the back end can step out; front retains steer authority.
+    rearCap *= 1 - 0.52 * handbrakeEffect;
+  }
   const fyF = (slipF < 0 ? 1 : slipF > 0 ? -1 : 0) * lateralShape(Math.abs(normF)) * frontCap;
   const fyR = (slipR < 0 ? 1 : slipR > 0 ? -1 : 0) * lateralShape(Math.abs(normR)) * rearCap;
   const lat = fyF + fyR;

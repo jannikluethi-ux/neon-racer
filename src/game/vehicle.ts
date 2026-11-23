@@ -270,6 +270,7 @@ export function stepCar(car: CarState, input: InputCommand, track: Track, dt: nu
     longAccel: car.longAccel,
     latAccel: car.latAccel,
     lift: car.liftBlend,
+    handbrake: input.drift,
     dt,
   }, def);
 

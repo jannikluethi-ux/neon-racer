@@ -650,6 +650,32 @@
   margin-top: 0.16rem;
 }
 
+.drift-readout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 0.12rem;
+  min-height: 0.95rem;
+}
+
+.drift-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  color: var(--color-muted);
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.drift-active .drift-state {
+  color: #ffb020;
+  text-shadow: 0 0 10px color-mix(in srgb, #ffb020 60%, transparent);
+}
+
 .nitro-state {
   display: inline-flex;
   align-items: center;
@@ -974,7 +1000,7 @@ input[type="range"] {
   display: grid;
   grid-template-columns: repeat(2, clamp(4.6rem, 9.5vh, 7.2rem));
   grid-template-areas:
-    "boost ."
+    "boost drift"
     "brake gas";
   align-items: end;
 }
@@ -1018,6 +1044,12 @@ input[type="range"] {
   grid-area: boost;
   border-color: color-mix(in srgb, var(--color-magenta) 55%, var(--color-line));
   color: #ffc6f4;
+}
+
+.pad.drift {
+  grid-area: drift;
+  border-color: color-mix(in srgb, #ffb020 55%, var(--color-line));
+  color: #ffe4b8;
 }
 
 .intro-scrim {

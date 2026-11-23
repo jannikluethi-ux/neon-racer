@@ -1,3 +1,5 @@
+import type { Telemetry } from "./store";
+
 declare global {
   interface Window {
     __controlsTest?: {
@@ -53,6 +55,8 @@ declare global {
         sceneGeometries: number;
         sceneTextures: number;
       };
+      /** Dev-only telemetry snapshot for gameplay smoke tests. */
+      getTelemetry: () => Telemetry;
     };
   }
 
