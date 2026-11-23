@@ -21,7 +21,11 @@ const scratch: Projection = {
   jump: false,
 };
 
-const traffic = { side: 0, defend: false, close: false };
+export type TrafficState = {
+  side: -1 | 0 | 1;
+  defend: boolean;
+  close: boolean;
+};
 
 /** Decision-only. Pace never exceeds the grip target, and nothing here scales force. */
 const DIFF: Record<
@@ -36,10 +40,10 @@ const DIFF: Record<
 /** Straight-line brake is ~11 m/s², but trail-braking shares the tire, so plan a longer stop. */
 const BRAKE_DECEL = 17.2;
 
-function scanTraffic(car: CarState, cars: readonly CarState[], track: Track): void {
-  traffic.side = 0;
-  traffic.defend = false;
-  traffic.close = false;
+export function scanTraffic(car: CarState, cars: readonly CarState[], track: Track): TrafficState {
+  let side: -1 | 0 | 1 = 0;
+  let defend = false;
+  let close = false;
   const n = cars.length;
   for (let i = 0; i < n; i++) {
     const other = cars[i]!;
@@ -50,12 +54,13 @@ function scanTraffic(car: CarState, cars: readonly CarState[], track: Track): vo
     const sideBy = Math.abs(other.latOff - car.latOff) < scratch.width * 0.6;
     if (!sideBy) continue;
     if (delta > 2.5 && delta < 18) {
-      traffic.side = other.latOff >= car.latOff ? -1 : 1;
-      if (delta < 8 && car.forwardSpeed > other.forwardSpeed - 2) traffic.close = true;
+      side = other.latOff >= car.latOff ? -1 : 1;
+      if (delta < 8 && car.forwardSpeed > other.forwardSpeed - 2) close = true;
     } else if (delta < -2 && delta > -14) {
-      traffic.defend = true;
+      defend = true;
     }
   }
+  return { side, defend, close };
 }
 
 /** Same vehicle commands as the player. Difficulty only changes decisions. */
@@ -95,7 +100,7 @@ export function aiCommand(
 
   const lineGain = clamp(ai.lineAccuracy * diff.line, 0.55, 1.08);
   let targetLat = aim.line * ai.apex * lineGain + car.lane * (1 - corner) + lineMiss;
-  scanTraffic(car, cars, track);
+  const traffic = scanTraffic(car, cars, track);
   if (traffic.side !== 0) targetLat += traffic.side * Math.min(2.8, scratch.width * 0.18);
   else if (traffic.defend) targetLat -= Math.sign(soon.curv || scratch.curv || 1) * 0.7;
   const limit = aim.width * 0.36;
